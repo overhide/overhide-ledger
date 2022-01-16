@@ -49,7 +49,8 @@ db.connect();
                                               amountusdcents integer NOT NULL,
                                               transferid varchar(100) NOT NULL,
                                               emailhash bytea,
-                                              void boolean DEFAULT false NOT NULL)`);
+                                              void boolean DEFAULT false NOT NULL,
+                                              private boolean DEFAULT false NOT NULL)`);
     console.log(`created 'transactions' table.`);
   }                                                                      
   await db.query('CREATE INDEX IF NOT EXISTS ledger_index ON transactions (fromaddress, transactionts);');

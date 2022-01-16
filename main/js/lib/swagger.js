@@ -37,10 +37,9 @@ class Swagger {
    * @param {string} swagger_endpoints_path - path to file with annotated endpoints for more API definitions
    * @param {string} uri
    * @param {string} our_processing_currency
-   * @param {boolean} isLedgerPrivate
    * @returns {Swagger} this
    */
-  init({ base_url, swagger_endpoints_path, uri, our_processing_currency, isLedgerPrivate } = {}) {
+  init({ base_url, swagger_endpoints_path, uri, our_processing_currency } = {}) {
     if (base_url == null) throw new Error("URL must be specified.");
     if (swagger_endpoints_path == null) throw new Error("Swagger endpoints_path must be specified.");
     if (uri == null) throw new Error("URI must be specified.");
@@ -49,8 +48,7 @@ class Swagger {
       base_url: base_url,
       path: swagger_endpoints_path,
       uri: uri,
-      currency: our_processing_currency,
-      isLedgerPrivate: isLedgerPrivate
+      currency: our_processing_currency
     };
     return this;
   }
@@ -85,7 +83,7 @@ class Swagger {
 
             All amounts are in *cents* of ${this[ctx].currency}.
             
-            These API docs are live: connected to ${this[ctx].uri}.  This is a server cluster running with KEEP_LEDGER_PRIVATE==${this[ctx].isLedgerPrivate} (see [README.md](https://github.com/overhide/overhide-ledger/blob/master/README.md)).
+            These API docs are live: connected to ${this[ctx].uri}.
 
             > These APIs are available on two networks:
             >
@@ -166,11 +164,6 @@ class Swagger {
             headers:
               WWW_Authenticate:
                 type: string
-          406:
-            description: |
-              The call is not allowed -- this ledger is in private-mode: this '/v1' API call is not allowed against overhide-ledger running in private mode (KEEP_LEDGER_PRIVATE=true).
-
-              Please use the corresponding '/v2' APIs.
           429:
             description: |
               Client is calling the API too frequently.

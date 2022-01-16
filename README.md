@@ -26,7 +26,6 @@ Orchestrate payments between payers and payees known only to this service--not t
 
 | *Configuration Point* | *Description* | *Sample Value* |
 | --- | --- | --- |
-| KEEP_LEDGER_PRIVATE | if set, `v1` APIs are disabled and `GET /v2/get-transactions/{from-address}/{to-address}` requires a token: see below | false |
 | KEYV_URI | if not set, use in-memory--this is fine except node recycle means users will need to intiate re-target again; redis is needed for running tests | redis://localhost:6379 |
 | KEYV_RETARGET_NAMESPACE | namespace in key-varlue store (keyv) to use for retarget info | retarget |
 | KEYV_RETARGET_TTL_MILLIS | period of time to store retarget info (in millis) | 3600000 |
@@ -43,18 +42,6 @@ Orchestrate payments between payers and payees known only to this service--not t
 If *INSTRUMENTED_FOR_TEST* configuration point is being used the following server behaviours will be in effect:
 
 1. the most recent retarget ID will be stored in KEYV at key `LATEST_ID`.  This allows retrieval of the ID in tests.  Requires use of Redis or some other persistent KEYV provider: not empty *KEYV_URI* (in-memory).
-
-## Public vs. Private Ledger
-
-If *KEEP_LEDGER_PRIVATE* is `false` (default) the *overhide* ledger is considered public:
-
-* `/v1` APIs can be used, are not disabled
-* `GET /v2/get-transactions/{from-address}/{to-address}` does not require a valid *signature* query parameter.
-
-If *KEEP_LEDGER_PRIVATE* is `true` the *overhide* ledger is considered private:
-
-* `/v1` APIs care disabled and will result in a `406/Not Acceptable` return.
-* `GET /v2/get-transactions/{from-address}/{to-address}` requires a valid *signature* query parameter: a base64 econded signature of the `Authorization` header value (also passed into this call), signed by *from-address*.
 
 # First Time DB Setup
 

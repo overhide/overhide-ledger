@@ -1,6 +1,7 @@
 "use strict";
 
-const debug = require('./log.js').debug_fn("challenge");
+const debug = require('./log.js').debug_fn("authTokenChallenge");
+const log = require('./log.js').fn("authTokenChallenge");
 const utils = require('./lib/utils.js');
 const crypto = require('./lib/crypto.js');
 
@@ -20,7 +21,7 @@ const checkInit = Symbol('checkInit');
  * Leverages node's module system for a sort of context & dependency injection, so order of requiring and initializing
  * these sorts of libraries matters.
  */
-class Challenge {
+class AuthTokenChallengeChecker {
   constructor() {
     this[ctx] = null;
   }
@@ -35,14 +36,12 @@ class Challenge {
    * injection.
    * 
    * @param {string} salt - salt for token tokenizing
-   * @param {boolean} isLedgerPrivate - is the ledger private
    * @returns {Challenge} this
    */
-  init({salt, isLedgerPrivate} = {}) {
+  init({salt} = {}) {
 
     this[ctx] = {
-      salt: salt,
-      isLedgerPrivate: isLedgerPrivate
+      salt: salt
     };
 
 
@@ -59,21 +58,19 @@ class Challenge {
   }
 
   /**
-   * middleware to check token in authorization header.
+   * Check passed in request for a valid signature query parameter.   
    * @param {}  req
-   * @param {} res
-   * @param {} next
-   * @returns {} response or calls next() to continue chain
+   * @param {stirng} address -- to check against
+   * @returns {boolean} -- truthy if signature valid for the value of the request's authorization header and
+   *                       passed in `fromAddress` query parameter.
    */
-   async checkTokenAuthZ(req, res, next) {
+   async isValidTokenAuthZ(req, address) {
     this[checkInit]();
 
-    const address = req.params['fromAddress'];
     if (!address || typeof address !== 'string' || address.length != 42) {
-      const err = `invalid address, checkTokenAuthZ can only be used with requests having fromAddress parameter that is a hex encoded 42 character string starting with '0x' (${address})`;
-      debug('checkTokenAuthZ ERROR :: %s', err);
-      rsp.status(400).send(String(err));
-      return;
+      const err = `invalid address, isValidTokenAuthZ can only be used with requests having an address parameter that is a hex encoded 42 character string starting with '0x' (${address})`;
+      debug('isValidTokenAuthZ DENIED :: %s', err);
+      return false;
     }
 
     const signature = req.params['signature'];
@@ -81,14 +78,7 @@ class Challenge {
 
     if (!signature) {
       this[metrics].noSignature++;
-
-      if (this[ctx].isLedgerPrivate) {
-        res.status(401).send('No `signature` query parameter when using v2 API against a private ledger.');
-        return;
-      } else {
-        next();
-        return;  
-      }
+      return false;  
     }
 
     try {
@@ -101,20 +91,13 @@ class Challenge {
         throw `signature doesn't match passed-in address (from-address:${address})`;
       }
       this[metrics].validTokens++;
-      next();
-      return;
+      return true;
     } catch (err) {
-      debug('checkTokenAuthZ ERROR :: %s', err);
+      debug('isValidTokenAuthZ DENIED :: %s', err);
     }      
 
     this[metrics].invalidTokens++;
-    if (this[ctx].isLedgerPrivate) {
-      res.status(401).send('Authorization header has invalid token when using v2 API against a private ledger.');
-      return;
-    } else {
-      next();
-      return;  
-    }
+    return false;  
 }
 
   /**
@@ -128,4 +111,4 @@ class Challenge {
   }    
 }
 
-module.exports = (new Challenge());
+module.exports = (new AuthTokenChallengeChecker());

@@ -13,8 +13,9 @@ var oh_ledger_transact = (function() {
   * @param {number} amountCents - amount in cents to pay. 
   * @param {string} fromAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
   * @param {string} toAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
+  * @param {boolean} isPrivate - transaction should private on the ledger: requiring signature from either sender or recepient.
   */ 
-  return (amountCents, fromAddress, toAddress) => {
+  return (amountCents, fromAddress, toAddress, isPrivate) => {
     let currency = '<%-currency%>';
 
     let handler = StripeCheckout.configure({
@@ -30,7 +31,8 @@ var oh_ledger_transact = (function() {
             paymentGatewayToken: token.id,
             providerAddress: toAddress,
             subscriberAddress: fromAddress,
-            amountCents: amountCents
+            amountCents: amountCents,
+            isPrivate: !!isPrivate
           })
         })
           .then((result) => {
@@ -52,7 +54,7 @@ var oh_ledger_transact = (function() {
 
     handler.open({
       name: 'overhide-ledger',
-      description: `oh-ledger from:${fromAddress} to:${toAddress}`,
+      description: `oh-ledger from:${fromAddress} to:${toAddress} private?:${isPrivate}`,
       currency: currency,
       amount: amountCents
     });

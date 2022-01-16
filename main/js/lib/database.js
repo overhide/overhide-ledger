@@ -134,12 +134,13 @@ class Database {
    * @param {string} providerAddress
    * @param {number} amount
    * @param {string} transferId
+   * @param {boolean} isPrivate
    */
-  async addTransaction(subscriberAddress, providerAddress, amount, transferId, emailHash) {
+  async addTransaction(subscriberAddress, providerAddress, amount, transferId, emailHash, isPrivate) {
     this[checkInit]();
     try {
-      let query = `INSERT INTO transactions (fromaddress, toaddress, transactionts, amountusdcents, transferid, emailhash) VALUES (decode($1,'hex'),decode($2,'hex'),$3,$4,$5,decode($6,'hex'))`;
-      let params = [subscriberAddress.slice(2), providerAddress.slice(2), new Date(), amount, transferId, emailHash];
+      let query = `INSERT INTO transactions (fromaddress, toaddress, transactionts, amountusdcents, transferid, emailhash, private) VALUES (decode($1,'hex'),decode($2,'hex'),$3,$4,$5,decode($6,'hex')),$7`;
+      let params = [subscriberAddress.slice(2), providerAddress.slice(2), new Date(), amount, transferId, emailHash, isPrivate];
       debug('%s,%o', query, params);
       await this[ctx].db.query(query,params);
       this[logEvent](query, params);
@@ -237,11 +238,13 @@ class Database {
 
   /**
    * @param {string} address - for subscriber
+   * @param {boolean} includePrivate -- should include private transactions?
    * @returns {Array} of transaction objects limited by 'select_max_rows' 
    */
-  async getLatestTransactionsByAddress(address) {
+  async getLatestTransactionsByAddress(address, includePrivate) {
     this[checkInit]();
-    let query = `SELECT * FROM transactions WHERE (fromaddress = decode($1,'hex') OR toaddress = decode($1,'hex')) AND void = false ORDER BY transactionts DESC LIMIT $2`;
+    const privatePart = includePrivate ? `` : ` AND private <> TRUE`;
+    let query = `SELECT * FROM transactions WHERE (fromaddress = decode($1,'hex') OR toaddress = decode($1,'hex')) AND void = false ${privatePart} ORDER BY transactionts DESC LIMIT $2`;
     let params = [address.slice(2), this[ctx].select_max_rows];
     return this.getTransactionsByQuery(query, params);
   }
@@ -275,17 +278,19 @@ class Database {
  * @param {Date} since - string to pass into Date constructor
  * @param {Date} asOf - string to pass into Date constructor
  * @param {boolean} tallyOnly
+ * @param {boolean} includePRivate -- should include private transactions?
  * @returns {{tally:.., transactions:[{transaction-value:..,transaction-date:..}], 'as-of':..}} where the 'transactions' array is only filled if not 'tallyOnly'.
  */
-  async getTransactions({ fromAddress, toAddress, maxMostRecent = null, since = null, asOf = null, tallyOnly = false }) {
+  async getTransactions({ fromAddress, toAddress, maxMostRecent = null, since = null, asOf = null, tallyOnly = false, includePrivate = false }) {
     this[checkInit]();
     let query_mmr = '';
     let query_since = `${since ? `AND transactionts >= '${since.toISOString()}'` : ''} ${asOf ? `AND transactionts <= '${asOf.toISOString()}'` : ''}`;
+    let query_private = includePrivate ? `` : ` AND private <> TRUE`;
     try {
       if (maxMostRecent) {
         query_mmr = `LIMIT ${maxMostRecent}`;
       }
-      let query = `SELECT sum(amountusdcents) AS tally FROM transactions WHERE fromAddress = decode($1,'hex') AND toaddress = decode($2,'hex') AND void = false ${query_since} ${query_mmr}`;
+      let query = `SELECT sum(amountusdcents) AS tally FROM transactions WHERE fromAddress = decode($1,'hex') AND toaddress = decode($2,'hex') AND void = false ${query_since} ${query_private} ${query_mmr}`;
       let params = [fromAddress.slice(2), toAddress.slice(2)];
       debug('%s,%o', query, params);
       let result = await this[ctx].db.query(query, params);
@@ -297,13 +302,12 @@ class Database {
       if (tallyOnly) {
         return {tally: tally, 'as-of': (new Date()).toISOString()};
       }
-      query = `SELECT amountusdcents, transactionts FROM transactions WHERE fromAddress = decode($1,'hex') AND toaddress = decode($2,'hex') AND void = false ${query_since} ORDER BY transactionts DESC ${query_mmr}`;
+      query = `SELECT amountusdcents, transactionts FROM transactions WHERE fromAddress = decode($1,'hex') AND toaddress = decode($2,'hex') AND void = false ${query_since} ${query_private} ORDER BY transactionts DESC ${query_mmr}`;
       debug('%s,%o', query, params);
       result = await this[ctx].db.query(query, params);
       if (result.rowCount == 0) {
         return { tally: 0, transactions: [], 'as-of': (new Date()).toISOString() };
       }
-      debug('%s,%o <= %o', query, params, result.rows);
       result = result.rows.map(row => {
         return {
           "transaction-value": row.amountusdcents,
@@ -311,6 +315,38 @@ class Database {
         };
       })
       return {tally: tally, transactions: result, 'as-of': (new Date()).toISOString()};
+    } catch (err) {
+      debug(`Error while getting transactions: ${String(err)}`)
+      throw `Error while getting transactions.`;
+    }
+  }
+
+  /**
+ * @param {string} address - for address
+ * @returns {transactions:[{from-address:..,to-address:..transaction-value:..,transaction-date:..,transfer-id:..,void:..,private:..}]}}.
+ */
+   async getAllTransactionsForAddress(address, skip = 0) {
+    this[checkInit]();
+    try {
+      let query = `SELECT fromaddress, toaddress, amountusdcents, transactionts, transferid, void, private FROM transactions WHERE fromAddress = decode($1,'hex') OR toaddress = decode($1,'hex') AND void = false ${query_since} ${query_private} ORDER BY transactionts ASC OFFSET ${skip} `;
+      let params = [address.slice(2)];
+      debug('%s,%o', query, params);
+      result = await this[ctx].db.query(query, params);
+      if (result.rowCount == 0) {
+        return { transactions: [] };
+      }
+      result = result.rows.map(row => {
+        return {
+          "from-address": row.fromaddress,
+          "to-address": row.toaddress,
+          "transaction-value": row.amountusdcents,
+          "transaction-date": row.transactionts,
+          "transfer-id": row.transferid,
+          "void": row.void,
+          "private": row.private
+        };
+      })
+      return {transactions: result};
     } catch (err) {
       debug(`Error while getting transactions: ${String(err)}`)
       throw `Error while getting transactions.`;
@@ -348,11 +384,13 @@ class Database {
 
   /**
    * @param {string} address - for subscriber
+   * @param {boolean} includePrivate -- should include private transactions?
    * @returns {number} of all transactions
    */
-  async getNumTransactionsByAddress(address) {
+  async getNumTransactionsByAddress(address, includePrivate) {
     this[checkInit]();
-    let query = `SELECT count(1) FROM transactions WHERE (fromaddress = decode($1,'hex') OR toaddress = decode($1,'hex')) AND void = false`;
+    const privatePart = includePrivate ? `` : ` AND private <> TRUE`;
+    let query = `SELECT count(1) FROM transactions WHERE (fromaddress = decode($1,'hex') OR toaddress = decode($1,'hex')) AND void = false ${privatePart}`;
     let params = [address.slice(2)];
     return this.getNumTransactionsByQuery(query, params);
   }
@@ -399,10 +437,10 @@ class Database {
       }).toString() + ')';
       debug('%s,%o <= %o', query, params, ids);
       
-      query = `INSERT INTO transactions(fromaddress,toaddress,transactionts,amountusdcents,transferid,emailhash,void)
-                 WITH o AS (SELECT toaddress, transactionts, amountusdcents, emailhash, void FROM transactions WHERE id in ${ids}),
+      query = `INSERT INTO transactions(fromaddress,toaddress,transactionts,amountusdcents,transferid,emailhash,void,private)
+                 WITH o AS (SELECT toaddress, transactionts, amountusdcents, emailhash, void, private FROM transactions WHERE id in ${ids}),
                       n AS (SELECT decode($1,'hex') as fromaddress, trim($2) as transferId)
-               SELECT n.fromaddress,o.toaddress,o.transactionts,o.amountusdcents,n.transferid,o.emailhash,o.void from o,n`;
+               SELECT n.fromaddress,o.toaddress,o.transactionts,o.amountusdcents,n.transferid,o.emailhash,o.void,o.private from o,n`;
       params = [address.slice(2), transactionId];
       debug('%s,%o', query, params);
       await this[ctx].db.query(query,params);
@@ -440,10 +478,10 @@ class Database {
       }).toString() + ')';
       debug('%s,%o <= %o', query, params, ids);
       
-      query = `INSERT INTO transactions(fromaddress,toaddress,transactionts,amountusdcents,transferid,emailhash,void)
-                 WITH o AS (SELECT fromaddress, transactionts, amountusdcents, emailhash, void FROM transactions WHERE id in ${ids}),
+      query = `INSERT INTO transactions(fromaddress,toaddress,transactionts,amountusdcents,transferid,emailhash,void,private)
+                 WITH o AS (SELECT fromaddress, transactionts, amountusdcents, emailhash, void, private FROM transactions WHERE id in ${ids}),
                       n AS (SELECT decode($1,'hex') as toaddress, trim($2) as transferId)
-               SELECT o.fromaddress,n.toaddress,o.transactionts,o.amountusdcents,n.transferid,o.emailhash,o.void from o,n`;
+               SELECT o.fromaddress,n.toaddress,o.transactionts,o.amountusdcents,n.transferid,o.emailhash,o.void,o.private from o,n`;
       params = [address.slice(2), transactionId];
       debug('%s,%o', query, params);
       await this[ctx].db.query(query,params);

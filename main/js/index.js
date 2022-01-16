@@ -19,7 +19,6 @@ const BASE_URL = process.env.BASE_URL || process.env.npm_config_BASE_URL || proc
 const PORT = process.env.PORT || process.env.npm_config_PORT || process.env.npm_package_config_PORT || 54321;
 const DEBUG = process.env.DEBUG || process.env.npm_config_DEBUG || process.env.npm_package_config_DEBUG;
 const INSTRUMENTED_FOR_TEST = process.env.INSTRUMENTED_FOR_TEST || process.env.npm_config_INSTRUMENTED_FOR_TEST || process.env.npm_package_config_INSTRUMENTED_FOR_TEST;
-const KEEP_LEDGER_PRIVATE = process.env.KEEP_LEDGER_PRIVATE || process.env.npm_config_KEEP_LEDGER_PRIVATE || process.env.npm_package_config_KEEP_LEDGER_PRIVATE;
 const INSIGHTS_KEY = process.env.INSIGHTS_KEY || process.env.npm_config_INSIGHTS_KEY || process.env.npm_package_config_INSIGHTS_KEY
 const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || process.env.npm_config_STRIPE_PUBLISHABLE_KEY || process.env.npm_package_config_STRIPE_PUBLISHABLE_KEY;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || process.env.npm_config_STRIPE_SECRET_KEY || process.env.npm_package_config_STRIPE_SECRET_KEY;
@@ -114,7 +113,6 @@ const ctx_config = {
   keyv_retarget_namespace: KEYV_RETARGET_NAMESPACE,
   keyv_retarget_ttl_millis: KEYV_RETARGET_TTL_MILLIS,
   instrumented: /t/i.test(INSTRUMENTED_FOR_TEST),
-  isLedgerPrivate: /t/i.test(KEEP_LEDGER_PRIVATE),
   smtp_host: SMTP_HOST,
   smtp_port: SMTP_PORT,
   smtp_secure: SMTP_SECURE,
@@ -127,7 +125,8 @@ const debug = require('./lib/log.js').init(ctx_config).debug_fn("app");
 const insights_key = require('./lib/insights.js').init(ctx_config);
 const crypto = require('./lib/crypto.js').init();
 const paymentGateway = require('./lib/paymentGateway.js').init(ctx_config);
-const challenge = require('./lib/challenge.js').init(ctx_config);
+const authTokenChallengeChecker = require('./lib/auth-token-challenge-checker.js').init(ctx_config);
+const loopbackChallengeChecker = require('./lib/loopback-challenge-checker.js').init(ctx_config);
 const recaptcha = require('./lib/recaptcha.js').init(ctx_config);
 const database = require('./lib/database.js').init(ctx_config);
 const swagger = require('./lib/swagger.js').init(ctx_config);
@@ -190,7 +189,7 @@ app.get('/pay', (req, res) => {
 });
 
 // start onboarding with Stripe which then calls /v1/onboardRedirectTargetFromPayGate below.
-app.get('/onboard', (req, rsp, next) => {
+app.get('/onboard', (req, rsp) => {
   (async () => {
     let state = req.query['state'];
     let clientId = STRIPE_CLIENT_ID;
@@ -208,7 +207,6 @@ app.get('/onboard', (req, rsp, next) => {
     }
     rsp.cookie('oh_paygate_id', '', cookieOpts);
     rsp.render('onboarding.html', { ...RENDER_PARAMS, onboardingUrl: onboardUrl });
-    next();
   })();
 });
 
@@ -298,7 +296,7 @@ app.get('/v1/gratis.html', throttle, (req, res) => {
   }
 });
 
-app.post('/v1/gratis', (req, res, next) => {
+app.post('/v1/gratis', (req, res) => {
   (async () => {
     try {
       var body = req.body;
@@ -317,12 +315,10 @@ app.post('/v1/gratis', (req, res, next) => {
       }
       debug('POST /v1/gratis OK');
       res.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/gratis <= %o ERROR :: %s', body, err);
       res.status(400).send(String(err));
-      next();
     }
   })();
 });
@@ -355,7 +351,7 @@ app.post('/v1/gratis', (req, res, next) => {
  *         ...
  *         <script>
  *           ...
- *           oh_ledger_transact(amountCents, fromAddress, toAddress); // call the injected function
+ *           oh_ledger_transact(amountCents, fromAddress, toAddress, isPrivate); // call the injected function
  *           ...
  *         </script>
  *       </html>       
@@ -373,6 +369,8 @@ app.post('/v1/gratis', (req, res, next) => {
  *       param {number} amountCents - amount in cents to pay.
  *       param {string} fromAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
  *       param {string} toAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
+ *       param {boolean} isPrivate - flags whether the created transaction is private:  requires a signature from one of the
+ *                                   participants to be shown/returned.
  *       ```
  *       <br/>
  *       On success this function posts a `{event: 'oh-ledger-ok'}` message.  On failure this page posts a `{event: 'oh-ledger-error', detail: '..'}` message.  The `oh-ledger-error` message contains an error string in the event's *detail*.  Whether you've loaded this HTML in an *iframe* or otherwise, you can listen for the events in the parent Web code:
@@ -452,7 +450,7 @@ app.get('/v1/transact.js', throttle, (req, res) => {
  * 
  * The cookie is consumed by /v1/provider below: it's expected that 'goPath' calls /v1/provider (button etc.).
  */
-app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp, next) => {
+app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp) => {
   (async () => {
     var query = req.query;
     debug('GET /v1/onboardRedirectTargetFromPayGate <= %o', query);
@@ -464,7 +462,6 @@ app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp, next) => {
       debug('GET /v1/onboardRedirectTargetFromPayGate <= %o ERROR bad URLs in "state" :: %s', query, err);
       rsp.status(400);
       rsp.send(new String(err));
-      next();
     }
     try {
       let error_description = query['error_description'];
@@ -488,14 +485,12 @@ app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp, next) => {
       }
       rsp.cookie('oh_paygate_id', paymentGatewayId, cookieOpts);
       rsp.redirect(302, redirectUrl);
-      next();
     }
     catch (err) {
       debug('GET /v1/onboardRedirectTargetFromPayGate <= %o ERROR :: %s', query, err);
       let baseUrl = state.baseUrl ? state.baseUrl : `${PROTOCOL}://${BASE_URL}`;
       let redirectUrl = utils.addQueryParam(`${baseUrl}${state.stopPath}`, 'error', utils.btoa(new String(err)));
       rsp.redirect(302, redirectUrl);
-      next();
     }
   })();
 });
@@ -523,7 +518,7 @@ app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp, next) => {
  * 
  * Cookie 'oh_paygate_id' contains the encrypted paymentGatewayId as set in /v1/onboardRedirectTargetFromPayGate
  */
-app.get('/v1/provider', (req, rsp, next) => {
+app.get('/v1/provider', (req, rsp) => {
   (async () => {
     var query = req.query;
     debug('GET /v1/provider <= %o', query);
@@ -535,7 +530,6 @@ app.get('/v1/provider', (req, rsp, next) => {
       debug('GET /v1/provider <= %o ERROR bad URLs in "state" :: %s', query, err);
       rsp.status(400);
       rsp.send(new String(err));
-      next();
       return;
     }
     let cookieOpts = { sameSite: 'strict', maxAge: 1 };
@@ -565,14 +559,12 @@ app.get('/v1/provider', (req, rsp, next) => {
       debug(`GET /v1/provider OK (redirect url: ${redirectUrl} )`);
       // expire the cookie
       rsp.redirect(302, redirectUrl);
-      next();
     }
     catch (err) {
       debug('GET /v1/provider <= %o ERROR :: %s', query, err);
       let baseUrl = state.baseUrl ? state.baseUrl : `${PROTOCOL}://${BASE_URL}`;
       let redirectUrl = utils.addQueryParam(`${baseUrl}${state.stopPath}`, 'error', utils.btoa(new String(err)));
       rsp.redirect(302, redirectUrl);
-      next();
     }
   })();
 });
@@ -586,7 +578,7 @@ app.get('/v1/provider', (req, rsp, next) => {
  *   - subscriberAddress
  *   - amount
  */
-app.post('/v1/shunt', (req, rsp, next) => {
+app.post('/v1/shunt', (req, rsp) => {
   (async () => {
     try {
       var body = req.body;
@@ -595,6 +587,7 @@ app.post('/v1/shunt', (req, rsp, next) => {
       let providerAddress = body['providerAddress'];
       let subscriberAddress = body['subscriberAddress'];
       let amountCents = body['amountCents'];
+      let isPrivate = !!body['isPrivate'];
       if (!paymentGatewayToken || typeof paymentGatewayToken !== 'string') throw `invalid paymentGatewayToken (${paymentGatewayToken})`;
       if (!providerAddress || typeof providerAddress !== 'string') throw `invalid providerAddress (${providerAddress})`;
       if (!subscriberAddress || typeof subscriberAddress !== 'string') throw `invalid subscriberAddress (${subscriberAddress})`;
@@ -607,16 +600,14 @@ app.post('/v1/shunt', (req, rsp, next) => {
           throw `no such provider: ${providerAddress}`
         }
         let { transferId, email } = await paymentGateway.shunt(paymentGatewayToken, accountId, amountCents, `tx,${accountId},${subscriberAddress},${providerAddress},${amountCents}`);
-        await database.addTransaction(subscriberAddress, providerAddress, amountCents, transferId, crypto.hash(email, SALT));
+        await database.addTransaction(subscriberAddress, providerAddress, amountCents, transferId, crypto.hash(email, SALT), isPrivate);
       }
       debug('POST /v1/shunt OK');
       rsp.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/shunt <= %o ERROR :: %s', body, err);
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
@@ -628,10 +619,9 @@ app.post('/v1/shunt', (req, rsp, next) => {
  *   - accountId
  *   - address
  */
-app.post('/v1/retarget-provider', (req, rsp, next) => {
+app.post('/v1/retarget-provider', (req, rsp) => {
   if (!!ISPROD) {
     rsp.status(403).send();
-    next();
   }
   (async () => {
     try {
@@ -665,12 +655,10 @@ app.post('/v1/retarget-provider', (req, rsp, next) => {
       }
       debug('POST /v1/retarget-provider OK');
       rsp.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/retarget-provider <= %o ERROR :: %s', body, err);
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
@@ -682,10 +670,9 @@ app.post('/v1/retarget-provider', (req, rsp, next) => {
  *   - email
  *   - address
  */
-app.post('/v1/retarget-subscriber', (req, rsp, next) => {
+app.post('/v1/retarget-subscriber', (req, rsp) => {
   if (!!ISPROD) {
     rsp.status(403).send();
-    next();
   }
   (async () => {
     try {
@@ -711,12 +698,10 @@ app.post('/v1/retarget-subscriber', (req, rsp, next) => {
       }
       debug('POST /v1/retarget-subscriber OK');
       rsp.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/retarget-subscriber <= %o ERROR :: %s', body, err);
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
@@ -724,10 +709,9 @@ app.post('/v1/retarget-subscriber', (req, rsp, next) => {
 /**
  * Continue re-targeting after user clicks on link from email (hits this endpoint).
  */
-app.get('/v1/retarget/:id', throttle, (req, rsp, next) => {
+app.get('/v1/retarget/:id', throttle, (req, rsp) => {
   if (!!ISPROD) {
     rsp.status(403).send();
-    next();
   }
   (async () => {
     try {
@@ -763,7 +747,6 @@ app.get('/v1/retarget/:id', throttle, (req, rsp, next) => {
         retarget_fee_dollars: utils.fixCentsToDollars(OUR_RETARGET_FEE_CENTS),
         publishableKey: STRIPE_PUBLISHABLE_KEY
       });
-      next();
     }
     catch (err) {
       debug('GET /v1/retarget/%s ERROR :: %s OK', id, err);
@@ -781,7 +764,6 @@ app.get('/v1/retarget/:id', throttle, (req, rsp, next) => {
         retarget_fee_dollars: '',
         publishableKey: STRIPE_PUBLISHABLE_KEY
       });
-      next();
     }
   })();
 });
@@ -794,10 +776,9 @@ app.get('/v1/retarget/:id', throttle, (req, rsp, next) => {
  *   - email
  *   - address
  */
-app.post('/v1/go-retarget', throttle, (req, rsp, next) => {
+app.post('/v1/go-retarget', throttle, (req, rsp) => {
   if (!!ISPROD) {
     rsp.status(403).send();
-    next();
   }
   (async () => {
     try {
@@ -835,17 +816,15 @@ app.post('/v1/go-retarget', throttle, (req, rsp, next) => {
       }
       debug('POST /v1/go-retarget OK');
       rsp.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/go-retarget <= %o ERROR :: %s', body, err);
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
 
-app.get('/v1/ledger.html', throttle, (req, res, next) => {
+app.get('/v1/ledger.html', throttle, (req, res) => {
   (async () => {
     try {
       var query = req.query;
@@ -853,9 +832,10 @@ app.get('/v1/ledger.html', throttle, (req, res, next) => {
       let address = query['address'];
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
+      let includePrivate = false;
       if (!await database.getError()) {
-        txs = await database.getLatestTransactionsByAddress(address);
-        num_all_txs = await database.getNumTransactionsByAddress(address);
+        txs = await database.getLatestTransactionsByAddress(address, includePrivate);
+        num_all_txs = await database.getNumTransactionsByAddress(address, includePrivate);
         if (txs.length == 0) throw `No transactions available for ${address}`;
       }
       res.render('ledger-page.html', {
@@ -866,7 +846,6 @@ app.get('/v1/ledger.html', throttle, (req, res, next) => {
         num_txs: txs.length,
         num_all_txs: num_all_txs
       });
-      next();
     }
     catch (err) {
       debug('GET /v1/ledger.html <= %o ERROR :: %s', query, err);
@@ -878,12 +857,11 @@ app.get('/v1/ledger.html', throttle, (req, res, next) => {
         num_txs: '',
         num_all_txs: ''
       });
-      next();
     }
   })();
 });
 
-app.get('/v1/void.html', throttle, (req, res, next) => {
+app.get('/v1/void.html', throttle, (req, res) => {
   (async () => {
     try {
       var query = req.query;
@@ -914,7 +892,6 @@ app.get('/v1/void.html', throttle, (req, res, next) => {
         num_txs: txs.length,
         num_all_txs: num_all_txs
       });
-      next();
     }
     catch (err) {
       debug('GET /v1/void.html <= %o ERROR :: %s', query, err);
@@ -928,7 +905,6 @@ app.get('/v1/void.html', throttle, (req, res, next) => {
         num_txs: '',
         num_all_txs: ''
       });
-      next();
     }
   })();
 });
@@ -941,7 +917,7 @@ app.get('/v1/void.html', throttle, (req, res, next) => {
  *   - subscriberAddress
  *   - signature
  */
-app.post('/v1/go-void', throttle, (req, rsp, next) => {
+app.post('/v1/go-void', throttle, (req, rsp) => {
   (async () => {
     try {
       var body = req.body;
@@ -962,12 +938,10 @@ app.post('/v1/go-void', throttle, (req, rsp, next) => {
       }
       debug('POST /v1/go-void OK');
       rsp.status(200).send();
-      next();
     }
     catch (err) {
       debug('POST /v1/go-void <= %o ERROR :: %s', body, err);
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
@@ -978,19 +952,19 @@ app.post('/v1/go-void', throttle, (req, rsp, next) => {
  *    get:
  *      summary: Export all transactions addressed to *to-address* from this cluster, such that they can be imported into another provider.
  *      description: |
- *        Retrieve the first batch of remuneration records addressed to *to-address* from this cluster, this provider.  
+ *        Retrieve batches of remuneration records -- in descending transaction time order -- addressed to *to-address* from this
+ *        cluster, this provider.  
  * 
- *        Each subsequent batch of records needs to be retrieved using repeated calls into the endpoint with the *offset* parameter.
+ *        Each subsequent batch of records needs to be retrieved using repeated calls into the endpoint with the *skip* 
+ *        parameter: to skip records already retrieved.  This operation is concurrency-safe as new records will always be 
+ *        returned by the last batch(es):  everything is in descending transaction time order.
  * 
  *        Results out of this remuneration provider always exclude voided transactions (e.g. transactions you void when you 
  *        issue refunds through [Stripe][https://stripe.com]).  All transactions voided through the "Void Txs" button in the 
  *        [legacy app](https://ledger.overhide.io/reap) are excluded.  This would be similar to setting truthy the 
  *        <em>include-refunds</em> query parameter in other remuneration providers &mdash; which work somewhat differently as they are
  *        blockchain based and cannot be voided.
- * 
- *        This endpoint will only work against public clusters such as https://overhide.io.  Attempts to use with private clusters will 
- *        result in 406/NOT ALLOWED.
- * 
+ *  
  *        All values in *USD cents*.
  * 
  *        Rate limits:  
@@ -1000,14 +974,6 @@ app.post('/v1/go-void', throttle, (req, rsp, next) => {
  *        - import & export
  *      parameters:
  *        - in: path
- *          name: from-address
- *          required: true
- *          description: |
- *            A public address from which to verify payment details (amount/date) to the *to-address*.  A 42 character
- *            'hex' string prefixed with '0x'
- *          schema:
- *            type: string
- *        - in: path
  *          name: to-address
  *          required: true
  *          description: |
@@ -1015,71 +981,31 @@ app.post('/v1/go-void', throttle, (req, rsp, next) => {
  *          schema:
  *            type: string
  *        - in: query
- *          name: max-most-recent
+ *          name: signature
+ *          required: true
+ *          description: |
+ *            A base64 econded signature of the `Authorization` header value (also passed into this call), signed by *to-address*.
+ *          schema:
+ *            type: string
+ *        - in: query
+ *          name: skip
  *          required: false
  *          schema:
  *            type: integer
  *          description: |
- *            Number of most recent transactions to retrieve.
- *        - in: query
- *          name: since
- *          required: false
- *          schema:
- *            type: string
- *          description: |
- *            Retrieve transactions since this date-time (inclusive) until now.
- *
- *            The date-time is a UTC timestamp string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
- *        - in: query
- *          name: as-of
- *          required: false
- *          schema:
- *            type: string
- *          description: |
- *            Retrieve transactions as-of this date-time (inclusive).
- * 
- *            Responses from this endpoint include an *as-of* timestamp.  Subsequent *tally-only* requests with this *as-of* timestamp are
- *            treated as *back-end* requests and go against *back-end* rate limits IFF the same *tally-only* request has recently been made 
- *            (by the front-end, for example), and is cached.
- *
- *            The date-time is a string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
- *        - in: query
- *          name: tally-only
- *          required: false
- *          schema:
- *            type: boolean
- *          description: |
- *            If present and set to `true` then the 200/OK response will not list individual *transactions*, just the
- *            *tally*.
- *
- *            If not present or set to anything but `true` then the 200/OK response will list individual *transactions* in
- *            addition to the *tally*.  
- *        - in: query
- *          name: tally-dollars
- *          required: false
- *          schema:
- *            type: boolean
- *          description: |
- *            If present and set to `true` then the 200/OK response will not list individual *transactions*, just the
- *            *tally* in dollars (not cents).
+ *            Number of records to skip before retrieving the next batch of records.  To get all records, keep on retrieving batches
+ *            with *skip* until the endpoint returns an empty list with 200/OK.
  *      produces:
  *        - application/json
  *      responses:
  *        200:
  *          description: |
- *            List of transactions and/or tally.
+ *            List of transactions.
  *          content:
  *            application/json:
  *              schema:
  *                type: object
- *                required:
- *                 - tally
  *                properties:
- *                  tally:
- *                    type: number
- *                    description: |
- *                      Tally of all the transactions from *from-address* to *to-address* in the range required
- *                      (*since*,*max-most-recent*,or unlimited).
  *                  transactions:
  *                    type: array
  *                    description: |
@@ -1087,169 +1013,39 @@ app.post('/v1/go-void', throttle, (req, rsp, next) => {
  *                      (*since*,*max-most-recent*,or unlimited).
  *                    items:
  *                      $ref: "#/definitions/Transaction"
- *                  as-of:
- *                    type: string
- *                    description: |
- *                      Timestamp of this request.
- * 
- *                      Use this timestamp as the *as-of* parameter to subsequent requests to be rate-limited at *back-end* limits (higher).  Only
- *                      works with *tally-dollars* requests.
- * 
- *                      The date-time is a string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
  *        400:
  *          $ref: "#/responses/400"
  *        401:
  *          $ref: "#/responses/401"
- *        406:
- *          $ref: "#/responses/406"
  *        429:
  *          $ref: "#/responses/429"
  */
- app.get('/v1/export/:toAddress', token, throttle, (req, rsp, next) => {
+ app.get('/v1/export/:toAddress', token, throttle, (req, rsp) => {
   (async () => {
     try {
-      debug('GET /v*/get-transactions <= %o, %o', req.params, req.query);
+      debug('GET /v1/export <= %o, %o', req.params, req.query);
+      let address = req.params['address'];
+      let skip = req.query['skip'];
+      address = address.toLowerCase();
+      skip = parseInt(skip);
 
-      if (ctx_config.isLedgerPrivate) {
-        debug('GET /v*/get-transactions ERROR :: cannot use v1 APIs on private overhide-ledger');
-        rsp.status(406).send();
-        next();
-      }
-
-      if (rsp.locals.backend && rsp.locals.result) {
-        rsp.json(rsp.locals.result);
+      if (!authTokenChallengeChecker.isValidTokenAuthZ(req, address)) {
+        debug(`GET /v1/export DENIED :: signature doesn't match authZ header and address`);
+        rsp.status(401).send();
         return;
       }
 
-      let fromAddress = req.params['fromAddress'];
-      let toAddress = req.params['toAddress'];
-      let maxMostRecent = req.query['max-most-recent'];
-      let since = req.query['since'];
-      let asOf = req.query['as-of'];
-      let tallyOnly = req.query['tally-only'];
-      let tallyDollars = req.query['tally-dollars'];
-      if (!fromAddress || typeof fromAddress !== 'string' || fromAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${fromAddress})`;
-      if (!toAddress || typeof toAddress !== 'string' || toAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${toAddress})`;
-      if (maxMostRecent && (isNaN(parseInt(maxMostRecent)) || parseInt(maxMostRecent) < 1)) throw `invalid max-most-recent, must be integer with value of 1 or more if speicified: (${maxMostRecent})`;
-      if (since) {
-        try {
-          if (!since.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${since} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
-          since = new Date(since);
-        } catch (err) {
-          throw `invalid since, must be ISO 8601 date string if speicified: (${since})`;
-        }
-      }
-      if (asOf) {
-        try {
-          if (!asOf.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${asOf} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
-          asOf = new Date(asOf);
-        } catch (err) {
-          throw `invalid since, must be ISO 8601 date string if speicified: (${asOf})`;
-        }
-      }
-      if (tallyOnly && (typeof tallyOnly !== 'string' || !/^(true|false)$/gi.test(tallyOnly))) throw `invalid tallyOnly, must be 'true' or 'false' if specified (${tallyOnly})`;
-      if (tallyDollars && (typeof tallyDollars !== 'string' || !/^(true|false)$/gi.test(tallyDollars))) throw `invalid tallyDollars, must be 'true' or 'false' if specified (${tallyDollars})`;
-      fromAddress = fromAddress.toLowerCase();
-      toAddress = toAddress.toLowerCase();
-      tallyOnly = tallyOnly ? /^true$/gi.test(tallyOnly) : false;
-      tallyDollars = tallyDollars ? /^true$/gi.test(tallyDollars) : false;
-      let result = await database.getTransactions({
-        fromAddress: fromAddress,
-        toAddress: toAddress,
-        maxMostRecent: maxMostRecent,
-        since: since,
-        asOf: asOf,
-        tallyOnly: tallyOnly
-      });
-      if (tallyDollars) {
-        result = { ...result, tally: (result.tally / 100).toFixed(2) };
-      }
-      debug('GET /v*/get-transactions OK :: %o', result);
+      let result = await database.getTransgetAllTransactionsForAddressactions(address, skip);
+      debug('GET /v1/export OK');
       rsp.json(result);
       rsp.locals.result = result;
-      next();
     }
     catch (err) {
-      debug('GET /v*/get-transactions ERROR :: %s', String(err));
+      debug('GET /v1/export ERROR :: %s', String(err));
       rsp.status(400).send(String(err));
-      next();
     }
   })();
 });
-
-
-// common handling of GET get-transactions for v1 and v2
-const getTransactions = (req, rsp, next) => {
-  (async () => {
-    try {
-      debug('GET /v*/get-transactions <= %o, %o', req.params, req.query);
-
-      if (ctx_config.isLedgerPrivate) {
-        debug('GET /v*/get-transactions ERROR :: cannot use v1 APIs on private overhide-ledger');
-        rsp.status(406).send();
-        next();
-      }
-
-      if (rsp.locals.backend && rsp.locals.result) {
-        rsp.json(rsp.locals.result);
-        return;
-      }
-
-      let fromAddress = req.params['fromAddress'];
-      let toAddress = req.params['toAddress'];
-      let maxMostRecent = req.query['max-most-recent'];
-      let since = req.query['since'];
-      let asOf = req.query['as-of'];
-      let tallyOnly = req.query['tally-only'];
-      let tallyDollars = req.query['tally-dollars'];
-      if (!fromAddress || typeof fromAddress !== 'string' || fromAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${fromAddress})`;
-      if (!toAddress || typeof toAddress !== 'string' || toAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${toAddress})`;
-      if (maxMostRecent && (isNaN(parseInt(maxMostRecent)) || parseInt(maxMostRecent) < 1)) throw `invalid max-most-recent, must be integer with value of 1 or more if speicified: (${maxMostRecent})`;
-      if (since) {
-        try {
-          if (!since.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${since} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
-          since = new Date(since);
-        } catch (err) {
-          throw `invalid since, must be ISO 8601 date string if speicified: (${since})`;
-        }
-      }
-      if (asOf) {
-        try {
-          if (!asOf.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${asOf} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
-          asOf = new Date(asOf);
-        } catch (err) {
-          throw `invalid since, must be ISO 8601 date string if speicified: (${asOf})`;
-        }
-      }
-      if (tallyOnly && (typeof tallyOnly !== 'string' || !/^(true|false)$/gi.test(tallyOnly))) throw `invalid tallyOnly, must be 'true' or 'false' if specified (${tallyOnly})`;
-      if (tallyDollars && (typeof tallyDollars !== 'string' || !/^(true|false)$/gi.test(tallyDollars))) throw `invalid tallyDollars, must be 'true' or 'false' if specified (${tallyDollars})`;
-      fromAddress = fromAddress.toLowerCase();
-      toAddress = toAddress.toLowerCase();
-      tallyOnly = tallyOnly ? /^true$/gi.test(tallyOnly) : false;
-      tallyDollars = tallyDollars ? /^true$/gi.test(tallyDollars) : false;
-      let result = await database.getTransactions({
-        fromAddress: fromAddress,
-        toAddress: toAddress,
-        maxMostRecent: maxMostRecent,
-        since: since,
-        asOf: asOf,
-        tallyOnly: tallyOnly
-      });
-      if (tallyDollars) {
-        result = { ...result, tally: (result.tally / 100).toFixed(2) };
-      }
-      debug('GET /v*/get-transactions OK :: %o', result);
-      rsp.json(result);
-      rsp.locals.result = result;
-      next();
-    }
-    catch (err) {
-      debug('GET /v*/get-transactions ERROR :: %s', String(err));
-      rsp.status(400).send(String(err));
-      next();
-    }
-  })();
-};
 
 /**
  *  @swagger
@@ -1265,6 +1061,9 @@ const getTransactions = (req, rsp, next) => {
  *        <em>include-refunds</em> query parameter in other remuneration providers &mdash; which work somewhat differently as they are
  *        blockchain based and cannot be voided.
  * 
+ *        Results out of this renumeration provider will return private transactions iff a valid *signature* is provided; see 
+ *        *isPrivate* parameter in `GET /v1/transact.js`.
+ * 
  *        All values in *USD cents*.
  * 
  *        Rate limits:  
@@ -1289,142 +1088,14 @@ const getTransactions = (req, rsp, next) => {
  *          schema:
  *            type: string
  *        - in: query
- *          name: max-most-recent
- *          required: false
- *          schema:
- *            type: integer
- *          description: |
- *            Number of most recent transactions to retrieve.
- *        - in: query
- *          name: since
- *          required: false
- *          schema:
- *            type: string
- *          description: |
- *            Retrieve transactions since this date-time (inclusive) until now.
- *
- *            The date-time is a UTC timestamp string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
- *        - in: query
- *          name: as-of
- *          required: false
- *          schema:
- *            type: string
- *          description: |
- *            Retrieve transactions as-of this date-time (inclusive).
- * 
- *            Responses from this endpoint include an *as-of* timestamp.  Subsequent *tally-only* requests with this *as-of* timestamp are
- *            treated as *back-end* requests and go against *back-end* rate limits IFF the same *tally-only* request has recently been made 
- *            (by the front-end, for example), and is cached.
- *
- *            The date-time is a string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
- *        - in: query
- *          name: tally-only
- *          required: false
- *          schema:
- *            type: boolean
- *          description: |
- *            If present and set to `true` then the 200/OK response will not list individual *transactions*, just the
- *            *tally*.
- *
- *            If not present or set to anything but `true` then the 200/OK response will list individual *transactions* in
- *            addition to the *tally*.  
- *        - in: query
- *          name: tally-dollars
- *          required: false
- *          schema:
- *            type: boolean
- *          description: |
- *            If present and set to `true` then the 200/OK response will not list individual *transactions*, just the
- *            *tally* in dollars (not cents).
- *      produces:
- *        - application/json
- *      responses:
- *        200:
- *          description: |
- *            List of transactions and/or tally.
- *          content:
- *            application/json:
- *              schema:
- *                type: object
- *                required:
- *                 - tally
- *                properties:
- *                  tally:
- *                    type: number
- *                    description: |
- *                      Tally of all the transactions from *from-address* to *to-address* in the range required
- *                      (*since*,*max-most-recent*,or unlimited).
- *                  transactions:
- *                    type: array
- *                    description: |
- *                      All the transactions from *from-address* to *to-address* in the range required
- *                      (*since*,*max-most-recent*,or unlimited).
- *                    items:
- *                      $ref: "#/definitions/Transaction"
- *                  as-of:
- *                    type: string
- *                    description: |
- *                      Timestamp of this request.
- * 
- *                      Use this timestamp as the *as-of* parameter to subsequent requests to be rate-limited at *back-end* limits (higher).  Only
- *                      works with *tally-dollars* requests.
- * 
- *                      The date-time is a string in [ISO 8601/RFC3339 format](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
- *        400:
- *          $ref: "#/responses/400"
- *        401:
- *          $ref: "#/responses/401"
- *        406:
- *          $ref: "#/responses/406"
- *        429:
- *          $ref: "#/responses/429"
- */
-app.get('/v1/get-transactions/:fromAddress/:toAddress', token, cacheCheck, throttle, getTransactions, cacheSave);
-
-/**
- *  @swagger
- * /v2/get-transactions/{from-address}/{to-address}:
- *    get:
- *      summary: Retrieve remuneration transactions and/or their tally.
- *      description: |
- *        Retrieve the latest remuneration transactions (and/or their tally) from *from-address* to *to-address*.
- * 
- *        Results out of this remuneration provider always exclude voided transactions (e.g. transactions you void when you 
- *        issue refunds through [Stripe][https://stripe.com]).  All transactions voided through the "Void Txs" button in the 
- *        [legacy app](https://ledger.overhide.io/reap) are excluded.  This would be similar to setting truthy the 
- *        <em>include-refunds</em> query parameter in other remuneration providers &mdash; which work somewhat differently as they are
- *        blockchain based and cannot be voided.
- * 
- *        All values in *USD cents*.
- * 
- *        Rate limits:  
- *          - *front-end* (all calls unless providing *as-of* and *tally-only* that are cached): 30 calls / minute / IP (across all overhide APIs)
- *          - *back-end* (calls providing *as-of* and *tally-only* IFF already cached): 600 calls / minute / IP (across all overhide APIs)
- *      tags:
- *        - remuneration provider
- *      parameters:
- *        - in: path
- *          name: from-address
- *          required: true
- *          description: |
- *            A public address from which to verify payment details (amount/date) to the *to-address*.  A 42 character
- *            'hex' string prefixed with '0x'
- *          schema:
- *            type: string
- *        - in: path
- *          name: to-address
- *          required: true
- *          description: |
- *            The target public address to check for payment made.  A 42 character 'hex' string prefixed with '0x'.
- *          schema:
- *            type: string
- *        - in: query
  *          name: signature
  *          required: false
  *          description: |
  *            A base64 econded signature of the `Authorization` header value (also passed into this call), signed by *from-address*.
  * 
- *            This parameter is mandatory if this server is running with `KEEP_LEDGER_PRIVATE` mode.
+ *            If a valid *signature* is provided, private transactions will be returned in the result.  Private transactions
+ *            are ones created with the *isPrivate* parameter set against the `oh_ledger_transact` method as injected from
+ *            `GET /v1/transact.js`.
  *          schema:
  *            type: string
  *        - in: query
@@ -1516,7 +1187,71 @@ app.get('/v1/get-transactions/:fromAddress/:toAddress', token, cacheCheck, throt
  *        429:
  *          $ref: "#/responses/429"
  */
-app.get('/v2/get-transactions/:fromAddress/:toAddress', token, cacheCheck, throttle, challenge.checkTokenAuthZ, getTransactions, cacheSave);
+app.get('/v1/get-transactions/:fromAddress/:toAddress', token, cacheCheck, throttle, (req, rsp, next) => {
+  (async () => {
+    try {
+      debug('GET /v1/get-transactions <= %o, %o', req.params, req.query);
+
+      if (rsp.locals.backend && rsp.locals.result) {
+        rsp.json(rsp.locals.result);
+        return;
+      }
+
+      let fromAddress = req.params['fromAddress'];
+      let toAddress = req.params['toAddress'];
+      let maxMostRecent = req.query['max-most-recent'];
+      let since = req.query['since'];
+      let asOf = req.query['as-of'];
+      let tallyOnly = req.query['tally-only'];
+      let tallyDollars = req.query['tally-dollars'];
+      if (!fromAddress || typeof fromAddress !== 'string' || fromAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${fromAddress})`;
+      if (!toAddress || typeof toAddress !== 'string' || toAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${toAddress})`;
+      if (maxMostRecent && (isNaN(parseInt(maxMostRecent)) || parseInt(maxMostRecent) < 1)) throw `invalid max-most-recent, must be integer with value of 1 or more if speicified: (${maxMostRecent})`;
+      if (since) {
+        try {
+          if (!since.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${since} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
+          since = new Date(since);
+        } catch (err) {
+          throw `invalid since, must be ISO 8601 date string if speicified: (${since})`;
+        }
+      }
+      if (asOf) {
+        try {
+          if (!asOf.match(/....-..-..[tT ]..:..:..(\..+)?Z/)) throw `timestamp ${asOf} does not match 'YYYY-MM-DDThh:mm:ss.mmmZ'`;
+          asOf = new Date(asOf);
+        } catch (err) {
+          throw `invalid since, must be ISO 8601 date string if speicified: (${asOf})`;
+        }
+      }
+      if (tallyOnly && (typeof tallyOnly !== 'string' || !/^(true|false)$/gi.test(tallyOnly))) throw `invalid tallyOnly, must be 'true' or 'false' if specified (${tallyOnly})`;
+      if (tallyDollars && (typeof tallyDollars !== 'string' || !/^(true|false)$/gi.test(tallyDollars))) throw `invalid tallyDollars, must be 'true' or 'false' if specified (${tallyDollars})`;
+      fromAddress = fromAddress.toLowerCase();
+      toAddress = toAddress.toLowerCase();
+      tallyOnly = tallyOnly ? /^true$/gi.test(tallyOnly) : false;
+      tallyDollars = tallyDollars ? /^true$/gi.test(tallyDollars) : false;
+      let result = await database.getTransactions({
+        fromAddress: fromAddress,
+        toAddress: toAddress,
+        maxMostRecent: maxMostRecent,
+        since: since,
+        asOf: asOf,
+        tallyOnly: tallyOnly,
+        includePrivate: authTokenChallengeChecker.isValidTokenAuthZ(req, req.params['from-address'])
+      });
+      if (tallyDollars) {
+        result = { ...result, tally: (result.tally / 100).toFixed(2) };
+      }
+      debug('GET /v1/get-transactions OK');
+      rsp.json(result);
+      rsp.locals.result = result;
+      next();
+    }
+    catch (err) {
+      debug('GET /v1/get-transactions ERROR :: %s', String(err));
+      rsp.status(400).send(String(err));
+    }
+  })();
+}, cacheSave);
 
 /**
  * @swagger
@@ -1587,17 +1322,11 @@ app.post('/v1/is-signature-valid',
   token,
   (req, res, next) => { res.locals.backend = /t/.test(req.query['skip-ledger']); next() },
   throttle,
-  (req, rsp, next) => {
+  (req, rsp) => {
     (async () => {
       try {
         var body = req.body;
         debug('POST /v1/is-signature-valid <= %o', body);
-
-        if (ctx_config.isLedgerPrivate) {
-          debug('POST /v1/is-signature-valid ERROR :: cannot use v1 APIs on private overhide-ledger');
-          rsp.status(406).send();
-          next();
-        }
 
         let address = body['address'];
         let signature = body['signature'];
@@ -1616,18 +1345,15 @@ app.post('/v1/is-signature-valid',
           if ((await database.getNumTransactionsByAddress(address)) == 0) {
             debug('POST /v1/is-signature-valid ERROR :: no transactions for address');
             rsp.status(400).send('no transactions for address');
-            next();
             return;
           }
         }
         debug('POST /v1/is-signature-valid OK');
         rsp.status(200).send();
-        next();
       }
       catch (err) {
         debug('POST /v1/is-signature-valid ERROR :: %s', String(err));
         rsp.status(400).send('invalid signature');
-        next();
       }
     })();
   });
@@ -1646,7 +1372,7 @@ function onSignal() {
 async function onHealthCheck() {
   const dbError = await database.getError();
   const tallyCacheMetrics = tallyCache.metrics();
-  const challengeMetrics = challenge.metrics();
+  const authTokenChallengeMetrics = authTokenChallengeChecker.metrics();
   const healthy = !dbError && tallyCacheMetrics.errorsDelta === 0;
   if (!healthy) {
     const reason = `dbError: ${dbError}, tallyCacheErrors: ${tallyCacheMetrics.errorsDelta}`;
@@ -1661,7 +1387,7 @@ async function onHealthCheck() {
     smtp: smtp.metrics(),
     paymentGateway: paymentGateway.metrics(),
     tallyCacheMetrics: tallyCacheMetrics,
-    challengeMetrics: challengeMetrics
+    authTokenChallengeMetrics: authTokenChallengeMetrics
   };
   return status;
 }
