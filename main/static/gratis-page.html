@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/site.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/reset.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/button.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/container.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/header.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/icon.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/input.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/label.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/placeholder.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/segment.min.css">
+  
+  <style>
+    @font-face {
+      font-family: Lato;
+      src: url('lib/font/lato-v14-latin-regular.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    html,body {
+      font-family: Lato;
+      font-variant: small-caps;
+      font-size: 4vmin !important;
+      min-width: 200px !important;
+    }
+
+    #recaptcha-container {
+      text-align: center;
+    }
+
+    #recaptcha {
+      display: inline-block;
+    }
+
+    @media only screen and (max-width: 450px) {
+      #recaptcha-container {
+        transform: scale(0.77);
+        -webkit-transform: scale(0.77);
+      }
+
+      #recaptcha {
+        width: 100%;
+        display: flex;
+        justify-content: center;      
+      }      
+    }
+
+    #button-submit {
+      width: 10em;      
+    }
+
+    #button-label {
+      width: 3.7em;
+    }
+
+    .agreement {
+      font-size: smaller;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ui basic center aligned segment">
+    <h4>Register a transaction onto the ledger without charge.</h4>
+    <p>Your Address: <%-address%></p>
+    <br/>
+    <p class="agreement">By clicking on the "I'm not a robot" button and subsequently clicking the "Submit" button you agree to Google's collection of information pertaining to your activities here.</p>
+    <p class="agreement">See Google's <a href="https://policies.google.com/privacy?hl=en">privacy policy</a> and <a href="https://policies.google.com/terms?hl=en">terms</a>.  Also read about <a href="https://policies.google.com/technologies/partner-sites">Google and your data.</a></p>
+    <div id="recaptcha-container">
+      <div id="recaptcha"></div>
+    </div>      
+    <br/>
+    <br/>
+    <div id="submit" class="ui primary basic disabled labeled button" onclick="return submit()">        
+      <div id="button-submit" class="ui loading button">Create Entry</div>
+      <a id="button-label" class="ui basic label"></a>
+    </div>
+
+  </div>
+</body>
+
+<script>
+
+var delay = 5;
+var isEnabled = false;
+
+window.onload = function() {
+  updateButton();
+}
+
+function updateButton() {
+  if (delay > 0) {
+    document.getElementById('button-label').innerHTML = `${delay}`;
+    delay--;
+    setTimeout(updateButton, 1000);
+  } else {
+    document.getElementById('button-label').innerHTML = '<i class="check icon"></i>';
+    document.getElementById('button-submit').classList.remove('loading');
+    if (recaptchaResult) {
+      isEnabled = true;
+      document.getElementById('submit').classList.remove('disabled');
+    }    
+  }
+}
+
+var recaptchaResult;
+
+function verifyCallback(response) {
+  recaptchaResult = response;
+  if (delay == 0) {
+    isEnabled = true;
+    document.getElementById('submit').classList.remove('disabled');
+  }
+}
+
+function onloadCallback() {
+  grecaptcha.render('recaptcha', {
+          'sitekey' : '<%-sitekey%>',
+          'callback' : verifyCallback
+        });
+}
+
+function submit() {
+  if (!isEnabled) return false;
+  let address = '<%-address%>';
+  fetch(`/v1/gratis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        address: address,
+        recaptchaResult: recaptchaResult
+      })
+    })
+    .then((result) => {
+      if (result.status == 200) {
+        window.parent.postMessage({event: 'oh-ledger-ok'}, '*');
+      } else {
+        result.text().then(txt => {
+          window.parent.postMessage({ event: 'oh-ledger-error', detail: txt }, '*');
+        });
+      }
+    })
+    .catch(e => {
+      window.parent.postMessage({ event: 'oh-ledger-error', detail: String(e) }, '*');
+    });
+  
+  return false;
+}
+
+</script>
+
+<script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
+
+</html>

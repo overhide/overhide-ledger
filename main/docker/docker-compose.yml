@@ -1,0 +1,10 @@
+version: '3.2'
+services:
+  oh-ledger:
+    build: 
+      context: .
+      dockerfile: ./main/docker/Dockerfile
+    image: oh-ledger
+    container_name: oh-ledger
+    ports:
+    - "8090:8090"

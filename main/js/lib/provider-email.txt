@@ -1,0 +1,7 @@
+Service provider's transaction re-targeting for overhide-ledger.
+
+This email was sent upon request from overhide-ledger: request to re-target transactions for <%-email%>.
+
+If you didn't make any such request please disregard, no further action is necessary.
+
+To continue to re-target your transactions to a new address please follow this link:  <%-url%>.

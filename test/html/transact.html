@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+
+<!-- quick and dirty standalone page to hit up 'transact.js' endpoint in 'main/js/index.js' -->
+
+<html>
+  <head>
+    <script src="http://localhost:54322/v1/transact.js"></script>
+  </head>
+
+  <button type="button" onclick="go()">run test</button>
+
+  <script>
+    function go() {
+      oh_ledger_transact(100,'0x046c88317b23dc57f6945bf4140140f73c8fc80f','0xd6106c445a07a6a1caf02fc8050f1fde30d7ce8b');
+    }
+
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.event === 'oh-ledger-ok') {
+        console.log('OK');
+      } else if (e.data && e.data.event === 'oh-ledger-error') {
+        console.log('ERROR: ' + e.data.detail);
+      }
+    }, false);
+
+  </script>
+</html>

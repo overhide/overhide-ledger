@@ -1,0 +1,1428 @@
+<!doctype html>
+
+<html lang="en">
+
+<!-- 
+  Why is this page so basic?  
+  
+  - no modern frameworks
+  - no package management
+  - no minification or obfuscation
+  - everything in one file
+  
+  It's because we want to encourage the user to look at this source code in the
+  browser and enable thinking about how the user's data is used within.
+
+  The Web page allows entry of some sensitive data, such as secret keys.
+
+  We want to be transparent about how these secret keys are handled--that they
+  never leave the browser's memory.
+-->
+
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/site.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/reset.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/main.css">
+  <script src="/lib/jquery-3.3.1.min.js"></script>
+  <meta name="viewport" content="height=device-height, width=device-width, initial-scale=1">
+
+  <title>overhide-ledger</title>
+</head>
+
+<body>
+  <a href="<%-uri%>"><img class="logo" src="/lib/header.png"></img></a>
+  <button id="switch-to-get-paid" class="ui ohcolor label" onclick="__ui_html_showProviderPane = true; rejigPanes();">
+    <img class="ui avatar image" lazy-src="/lib/piggy-bank.png">
+    go get paid
+  </button>
+  <button id="switch-to-pay-someone" class="ui ohcolor label" onclick="__ui_html_showProviderPane = false; rejigPanes();">
+    <img class="ui avatar image" lazy-src="/lib/payment.png">
+    go pay someone
+  </button>
+
+  <div id="loading">
+    <img id="loading-image" src="/lib/logo.png" alt="Loading..." />
+    <h4>Loading...</h4>
+  </div>
+
+  <div class="left">
+    <div class="content-box">
+      <div id="pay-someone-infographic-nav">
+        <i class="black massive info circle icon" onclick="__ui_html_showInfographicNav = false; rejigPanes()"></i>
+      </div>
+      <div id="pay-someone-infographic" class="ui basic center aligned segment">
+        <i class="black big circular close icon" onclick="__ui_html_showInfographicNav = true; rejigPanes()"></i>
+        <div class="row">
+          <div id="pay-provider-svg">
+            <div class="has-wallet"></div>
+            <div class="no-wallet"> </div>
+          </div>
+          <div id="gratis-svg">
+            <div class="has-wallet"></div>
+            <div class="no-wallet"> </div>
+          </div>
+        </div>
+        <div class="ui basic segment infographic-loader"><div class="ui active loader"></div></div>
+      </div>
+      <div id="get-paid-infographic-nav">
+        <i class="black massive info circle icon" onclick="__ui_html_showInfographicNav = false; rejigPanes()"></i>
+      </div>
+      <div id="get-paid-infographic" class="ui basic center aligned segment">
+        <i class="black big circular close icon" onclick="__ui_html_showInfographicNav = true; rejigPanes()"></i>
+        <div class="row">
+          <div class="has-wallet"></div>
+          <div class="no-wallet"> </div>
+        </div>
+        <div class="ui basic segment infographic-loader"><div class="ui active loader"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div>
+      <div class="content-box">
+        <div id="get-paid-box">
+          <div class="ui basic inverted center aligned segment">
+            <img class="ui avatar tiny image" lazy-src="/lib/piggy-bank.png">
+            <span class="ui inverted header">
+              SIGN UP TO GET PAID
+            </span>
+            <h4>Register to receive payments via Stripe whenever someone<br /> creates a ledger transaction against your
+              <i>address</i>.</h4>
+            <div class="ui row fluid labeled icon input provider no-wallet"
+              help="Your public overhide-ledger address.  This is your identification to share with your subscribers.  Generate a new one using the 'Generate' button below unless you already have one--or an Ethereum address you want to use.  This address will be privately tied to your Stripe account: payments made against this public ledger address will end up in your private stripe account.">
+              <div indicator="indicate-payee-address" class="ui label">address</div>
+              <input id="provider-address" type="text" bind="providerAddress" name="username" autocomplete="username"
+                placeholder="0x44A47b5f734999958C0A2Caf05e29e6C3965fd04" />
+              <i indicator="indicate-copy-clipboard" class="copy outline fitted small link icon tooltip" id="providerAddressC2C"
+                onclick="copyToClipboard('providerAddress')">
+                <div class="tooltiptext inverted">Copy to clipboard.</div>
+              </i>
+            </div>
+            <div class="ui row fluid labeled icon input provider has-wallet"
+              help="Your public ledger address from your wallet.  Switch it using your Ethereum wallet.  If you want to use a non-wallet address for free-form entry, log out of your Ethereum wallet.  This address will be privately tied to your Stripe account: payments made against this public ledger address will end up in your private stripe account.">
+              <div indicator="indicate-payee-address" class="ui label">your address</div>
+              <input type="text" bind="walletAddress" readonly>
+            </div>
+            <div class="ui row fluid labeled icon input provider no-wallet"
+              help="Your secret signing key for the above public address.  Keep this secret and to yourself.  This secret key is used to prove you own the above address.  The key is not sent anywhere and not stored anywhere within the overhide-ledger: it's used solely within this Web page to ensure you own the above address before further interaction (check the page source).">
+              <div indicator="indicate-payee-signing-key" class="ui label">signing key</div>
+              <input id="provider-secret" type="password" bind="providerSecret" name="password" autocomplete="password"
+                placeholder="0xaca410a078f7a80302ac46b80a6fb6ed146aec710ca08522a1cf3560bf9ba748">
+              <i class="copy outline fitted small link icon tooltip" id="providerSecretC2C"
+                onclick="copyToClipboard('providerSecret')">
+                <div class="tooltiptext inverted">Copy to clipboard.</div>
+              </i>
+            </div>
+            <p class="has-wallet">Address taken from your Ethereum wallet, log-out from wallet for free-form entry.</p>
+            <div class="row">
+              <div id="payee-generate" indicator="indicate-payee-generate" class="ui ohcolor button provider no-wallet"
+                onclick="generate('providerAddress','providerSecret')"
+                help="If you do not have/remember your 'address' & 'signing key' pair, click this to generate one.">Generate
+              </div>
+              <div id="void-button" class="ui ohcolor button provider need-data" onclick="$('#void-target-modal').modal('show')"
+                help="Mark as 'void' all transactions from an address to your provider address.">Void
+                Txs</div>
+              <div id="payee-retarget" class="ui ohcolor button provider need-data"
+                onclick="$('#retarget-provider-modal').modal('show')"
+                help="Transactions targeted at an address tied to your Stripe account will be copied to target a new address.  Original transactions will remain in the ledger voided.  New transactions will be added against your new provider address with the same amounts and timestamps as source transactions.">
+                Re-target
+                Txs</div>
+            </div>
+            <div class="row">
+              <div id="register-payee" indicator="indicate-register-payee"
+                class="ui primary disabled labeled icon button provider need-data"
+                help="Clicking this button will take you to Stripe's Web site to continue registration.  You will be returned back."
+                onclick="registerConfirm()">Register to receive payments with Stripe<i class="stripe s icon"></i></div>
+            </div>
+            <div id="notificationTextProvider" class="row error-text invert"></div>
+            <div id="statusTextProvider" class="row status-text invert"></div>
+          </div>
+          <input type=text id="email">
+          <div id="questions" class="ui basic inverted segment">
+            <div class="ui horizontal header divider">Questions in need of answering</div>
+            <p>Why? What is this? <a indicator="indicate-learn-motivate" href="https://overhide.io/2019/03/20/why.html" target="_blank">Because</a>
+                <span id="start-here"><span><i class="hand point big red left icon"></i></span></span>.              
+           </p>
+            <p>Do my users need to use this UI? No, check out <a indicator="indicate-demo" href="https://www.npmjs.com/package/ledgers.js#getting-a-taste" target="_blank">this integration demo</a> showing several payment options--free, dollars, and ether--as enabled by <a indicator="indicate-lib" href="https://www.npmjs.com/package/ledgers.js" target="_blank">an <em>OSS</em> library</a> that abstracts this ledger's <a href="/swagger.html" target="_blank">API</a>.</p>
+            <p>How much does this cost? <a href="https://stripe.com/pricing" target="_blank">Stripe charges their fees.</a>
+              The ledger charges
+              <%-fee_cents%> cent(s) on top of that.</p>
+          </div>
+        </div>
+        <div id="pay-someone-content-box" class="ui basic inverted center aligned segment">
+          <img class="ui avatar tiny image" lazy-src="/lib/payment.png">
+          <span class="ui inverted header">
+            PAY SOMEONE
+          </span>
+          <h4>Transact on the ledger: pay a provider.</h4>
+          <div class="ui row fluid labeled icon input subscriber no-wallet" help="Your public ledger address.  You should have this saved off from previous interactions with the ledger--if any--or please 'generate' a new one using the 'Generate' button.  This address will be privately tied to this payment.  Multiple payments on the ledger can have the same address.  This is your pseudonymous identification as a subscriber.">
+            <div indicator="indicate-payer-address" class="ui label">your address</div>
+            <input id="subscriber-address" type="text" bind="subscriberAddress" name="username" autocomplete="username" placeholder="0xf311F1787786382ccdFc353Fc984c47b6ecf9F58">
+            <i indicator="indicate-copy-clipboard" class="copy outline fitted small link icon tooltip" id="subscriberAddressC2C" onclick="copyToClipboard('subscriberAddress')">
+              <div class="tooltiptext inverted">Copy to clipboard.</div>
+            </i>
+          </div>
+          <div class="ui row fluid labeled icon input subscriber has-wallet" help="Your public ledger address from your wallet.  Switch it using your Ethereum wallet.  If you want to use a non-wallet address for free-form entry, log out of your Ethereum wallet.  This address will be privately tied to this payment.  Multiple payments on the ledger can have the same address.  This is your pseudonymous identification as a subscriber.">          
+            <div indicator="indicate-payer-address" class="ui label">your address</div>
+            <input type="text" bind="walletAddress" readonly>
+          </div>
+          <div class="ui row fluid labeled icon input subscriber no-wallet" help="Your secret signing key for the above public address.  This secret key is used to prove you own the above address.  **YOU WILL NEED TO USE THIS KEY LIKE A PASSWORD TO VERIFY YOU OWN THE ABOVE ADDRESS AND HENCE MADE A PAYMENT**.  The key is not sent anywhere and not stored anywhere within the overhide-ledger: it's used solely within this Web page to ensure you own the above address before further interaction (check the page source, it's not obfuscated).">
+            <div indicator="indicate-secret-key" class="ui label">your signing key</div>
+            <input id="subscriber-secret" type="password" name="password" autocomplete="password" bind="subscriberSecret" placeholder="0x9a87924c2ed989c667194e357b2e1a414e12f8b60e2d2098f3c957e338fb7413">
+            <i class="copy outline fitted small link icon tooltip" id="subscriberSecretC2C" onclick="copyToClipboard('subscriberSecret')">
+              <div class="tooltiptext inverted">Copy to clipboard.</div>
+            </i>
+          </div>
+          <p class="has-wallet">Address taken from your Ethereum wallet, log-out from wallet for free-form entry.</p>
+          <div class="row">
+            <div id="generate-payer" indicator="indicate-generate-payer" class="ui ohcolor button subscriber no-wallet" onclick="generate('subscriberAddress','subscriberSecret')"
+              help="If you do not have/remember your 'address' & 'signing key' pair, click this to generate one.">Generate</div>
+            <div id="show-ledger-page" class="ui ohcolor button subscriber need-address" onclick="showLedgerPage()" help='Show transactions "from" this address or "to" this address.'>Show
+              Txs</div>
+            <div id="payer-retarget" class="ui ohcolor button subscriber need-creds-data" onclick="$('#retarget-subscriber-modal').modal('show')">Re-target
+              Txs</div>
+          </div>
+          <br />
+          <div class="row">          
+            <div class="ui buttons">
+              <button indicator="indicate-pay-button" class="ui ohcolor button subscriber" onclick="showPayProvider()" help="Create a transaction on the ledger with payment from your address to a provider.">Pay
+                Provider</button>
+              <div class="or" data-text="OR"></div>            
+              <button indicator="indicate-gratis-button" class="ui ohcolor button subscriber" onclick="showGratis()" help="Create a free transaction on the ledger.  Although overhide-ledger doesn't collect personal information, choosing this option you agree you're comfortable with Google's collection of your information via reCaptcha.">Gratis</button>
+            </div>
+          </div>
+          <div id="pay-provider">          
+            <div class="ui row fluid labeled icon input subscriber" help="Amount in <%-currency%> to pay to provider.">            
+              <div indicator="indicate-pay-amount" class="ui label">amount in
+                <%-currency%>
+              </div>
+              <input id="pay-amount-input" type="text" bind="amount" placeholder="1.00">
+            </div>          
+            <div class="ui row fluid labeled icon input subscriber" help="The public address you're making a payment to.  You should receive this from the service provider you're trying to pay.">            
+              <div indicator="indicate-payee-address" class="ui label">provider address</div>
+              <input id="pay-address-input" type="text" bind="targetAddress" placeholder="0x44A47b5f734999958C0A2Caf05e29e6C3965fd04">
+            </div>
+            <div class="row">            
+              <div id="pay-with-stripe" indicator="indicate-pay-with-stripe" class="ui primary disabled labeled icon button subscriber need-pay-data" help="Clicking this button will take you to Stripe's Web site to continue payment.  You will be returned back."
+                onclick="payConfirm()">Pay with Stripe<i class="stripe s icon"></i></div>
+            </div>
+          </div>
+          <div id="gratis">
+            <br />
+            <div class="row">            
+              <div indicator="indicate-create-free-entry" class="ui primary disabled button subscriber need-gratis-data" help="Clicking this button will take you to a modal with a Google reCaptcha.  After a delay you'll be able to proceed and create a ledger entry."
+                onclick="showGratisPage()">Create Free Entry</div>
+                <span id="gratis-check-wallet" class="popup-check-wallet"><img lazy-src="lib/checkwallet.svg"></img></span>
+            </div>
+          </div>
+          <p id="notificationTextSubscriber" class="row error-text invert"></p>
+          <p id="statusTextSubscriber" class="row status-text invert"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal for notification -->
+  <div class="ui modal" id="notification-modal">
+    <div class="header">
+      Result
+      <i class="close icon" onclick="$('#notification-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <p id="notification-modal-text" bind="result"></p>
+    </div>
+  </div>
+
+  <!-- modal for ledger entries -->
+  <div class="ui modal" id="ledger-modal">
+    <div class="header">
+      Ledger Entries
+      <i class="close icon" onclick="$('#ledger-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <iframe id="ledger-content"></iframe>
+    </div>
+  </div>
+
+  <!-- modal to target address for voiding -->
+  <div class="ui modal" id="void-target-modal">
+    <div class="header">
+      Which Address to Void Entries For?
+      <i class="close icon" onclick="$('#void-target-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <div class="ui basic center aligned segment">
+        <p class="row">
+          Whose entries do you want to void?  What is the "from" address to void entries for?
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">from address</div>
+          <input id="void-from-address" type="text" bind="fromAddress">
+        </div>
+        <div class="row">
+          <div id="show-void-page-button" class="ui primary disabled button" onclick="showVoidPage()">Void Entries to You From Above Address</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal for confirming voiding entries -->
+  <div class="ui modal" id="void-modal">
+    <div class="header">
+      Confirm Entries To Void
+      <i class="close icon" onclick="$('#void-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <iframe id="void-content"></iframe>
+    </div>
+  </div>
+  
+  <!-- modal for gratis entry -->
+  <div class="ui modal" id="gratis-modal">
+    <div class="header">
+      Register Free Transaction
+      <i class="close icon" onclick="$('#gratis-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <iframe id="gratis-content"></iframe>
+    </div>
+  </div>
+
+  <!-- modal to confirm address for provider -->
+  <div class="ui modal" id="register-confirm-modal">
+    <div class="header">
+      Please Read Carefully
+      <i class="close icon" onclick="$('#register-confirm-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <div class="ui basic center aligned segment">
+        <p class="row">
+          Your new address and signing key are repeated below.
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="providerAddress">
+          <i class="copy outline fitted small link icon tooltip" id="providerAddressC2C" onclick="copyToClipboard('providerAddress')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">your signing key</div>
+          <input readonly type="password" bind="providerSecret">
+          <i class="copy outline fitted small link icon tooltip" id="providerSecretC2C" onclick="copyToClipboard('providerSecret')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <h3>
+          Please remember to copy both of these credentials. Think of them as your username (address) and password
+          (signing key).
+        </h3>
+        <p>
+          Use the little clipboard icons to copy each to your clipboard and save off.
+        </p>
+        <div class="row">
+          <div class="ui primary button" onclick="register()">Got it, Continue</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal to confirm address for subscriber -->
+  <div class="ui modal" id="pay-confirm-modal">
+    <div class="header">
+      Please Read Carefully
+      <i class="close icon" onclick="$('#pay-confirm-modal').modal('hide')"></i>
+    </div>
+    <div class="content">
+      <div class="ui basic center aligned segment">
+        <p class="row">
+          Your new address and signing key are repeated below.
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="subscriberAddress">
+          <i class="copy outline fitted small link icon tooltip" id="subscriberAddressC2C" onclick="copyToClipboard('subscriberAddress')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">your signing key</div>
+          <input readonly type="password" bind="subscriberSecret">
+          <i class="copy outline fitted small link icon tooltip" id="subscriberSecretC2C" onclick="copyToClipboard('subscriberSecret')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <h3>
+          Please remember to copy both of these credentials. Think of them as your username (address) and password
+          (signing key).
+        </h3>
+        <p>
+          Use the little clipboard icons to copy each to your clipboard and save off.
+        </p>
+        <div class="row">
+          <div id="pay-confirm-model-button" class="ui primary button" onclick="shunt()">Got it, Continue</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal for provider re-targetting -->
+  <div class="ui modal" id="retarget-provider-modal">
+    <div class="header">
+      Re-Target Provider Transactions
+      <i class="close icon" onclick="$('#retarget-provider-modal').modal('hide')"></i>
+    </div>
+    <div class="scrolling content">
+      <div class="ui basic center aligned segment">
+        <p>
+          Re-targeting of transactions means finding all ledger payments made to the provider account ID below, voiding
+          them,
+          and adding revision entries with a new ledger address.
+        </p>
+        <p>
+          Note that <em>overhide-ledger</em> interrogates Stripe for your email address to confirm this operation.
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">Stripe Account ID</div>
+          <input type="text" bind="accountId" placeholder="acct_1D0000000000VA">
+        </div>
+        <p class="row no-wallet">
+          Your new address and signing key are repeated below. If you wish to change them please exit out of this modal
+          and re-generate/re-enter.
+        </p>
+        <div class="ui row fluid labeled icon input no-wallet">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="providerAddress" placeholder="0xf311F1787786382ccdFc353Fc984c47b6ecf9F58">
+          <i class="copy outline fitted small link icon tooltip" id="providerAddressC2C" onclick="copyToClipboard('providerAddress')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <div class="ui row fluid labeled icon input no-wallet">
+          <div class="ui label">your signing key</div>
+          <input readonly type="password" bind="providerSecret" placeholder="0x9a87924c2ed989c667194e357b2e1a414e12f8b60e2d2098f3c957e338fb7413">
+          <i class="copy outline fitted small link icon tooltip" id="providerSecretC2C" onclick="copyToClipboard('providerSecret')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <h4 class="no-wallet">
+          Please remember to copy both of these credentials. Think of them as your username (address) and password
+          (signing key).
+        </h4>
+        <p class="no-wallet">
+          Use the little clipboard icons to copy each to your clipboard and save off.
+        </p>
+        <p class="row has-wallet">
+          The new address is taken from your Ethereum wallet and shown below. If you wish to change it please use your
+          wallet.
+        </p>
+        <div class="ui row fluid labeled icon input has-wallet">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="walletAddress">
+        </div>
+        <br class="has-wallet" />
+        <p>
+          When you click "Re-target" below, the system will find transactions related to your Stripe account and email
+          you a link to continue with the re-targeting.
+        </p>
+        <p>
+          Once you get the email--and if you decide to go ahead with the re-targeting--you will be charged a fee of
+          <%-retarget_fee_dollars%>
+          <%-currency%>.
+        </p>
+        <div class="row">
+          <div id="retarget-provider-ok" class="ui primary disabled labeled icon button" onclick='retargetProvider()'>Re-target<i
+              class="envelope icon"></i><span class="popup-check-wallet"><img lazy-src="lib/checkwallet.svg"></img></span></div>          
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal for retargetting subscriber -->
+  <div class="ui modal" id="retarget-subscriber-modal">
+    <div class="header">
+      Re-target Subscriber Transactions
+      <i class="close icon" onclick="$('#retarget-subscriber-modal').modal('hide')"></i>
+    </div>
+    <div class="scrolling content">
+      <div class="ui basic center aligned segment">
+        <p>
+          Re-targeting of transactions means finding all ledger payments made from the email address below, voiding
+          them,
+          and adding revision entries with a new ledger address.
+        </p>
+        <p>
+          Note that <em>overhide-ledger</em> doesn't store your email address. It stores a hash of the email address
+          used for the original Stripe payment. To perform re-targeting <em>overhide-ledger</em> goes out to Stripe
+          to retrieve the corresponding email.
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">email on payment</div>
+          <input type="text" bind="emailOnPayment" placeholder="fred@acme.com">
+        </div>
+        <p class="row no-wallet">
+          Your new address and signing key are repeated below. If you wish to change them please exit out of this modal
+          and re-generate/re-enter.
+        </p>
+        <div class="ui row fluid labeled icon input no-wallet">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="subscriberAddress" placeholder="0xf311F1787786382ccdFc353Fc984c47b6ecf9F58">
+          <i class="copy outline fitted small link icon tooltip" id="subscriberAddressC2C" onclick="copyToClipboard('subscriberAddress')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <div class="ui row fluid labeled icon input no-wallet">
+          <div class="ui label">your signing key</div>
+          <input readonly type="password" bind="subscriberSecret" placeholder="0x9a87924c2ed989c667194e357b2e1a414e12f8b60e2d2098f3c957e338fb7413">
+          <i class="copy outline fitted small link icon tooltip" id="subscriberSecretC2C" onclick="copyToClipboard('subscriberSecret')">
+            <div class="tooltiptext inverted">Copy to clipboard.</div>
+          </i>
+        </div>
+        <h4 class="no-wallet">
+          Please remember to copy both of these credentials. Think of them as your username (address) and password
+          (signing key).
+        </h4>
+        <p class="no-wallet">
+          Use the little clipboard icons to copy each to your clipboard and save off.
+        </p>
+        <p class="row has-wallet">
+          The new address is taken from your Ethereum wallet and shown below. If you wish to change it please use your
+          wallet.
+        </p>
+        <div class="ui row fluid labeled icon input has-wallet">
+          <div class="ui label">your address</div>
+          <input readonly type="text" bind="walletAddress">
+        </div>
+        <br class="has-wallet" />
+        <p>
+          When you click "Re-target" below the system will find transactions related to your email and email you a link
+          to continue with the re-targeting.
+        </p>
+        <p>
+          Once you get the email--and if you decide to go ahead with the re-targeting--you will be charged a fee of
+          <%-retarget_fee_dollars%>
+          <%-currency%>.
+        </p>
+        <div class="row">
+          <div id="retarget-subscriber-ok" class="ui primary disabled labeled icon button" onclick='retargetSubscriber()'>Re-target<i
+              class="envelope icon"></i><span class="popup-check-wallet"><img lazy-src="lib/checkwallet.svg"></img></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+<script>
+  __ui_html_showProviderPane = false;
+  __ui_html_showInfographicNav = true;
+  __ui_html_showInfographicNav = true;
+
+  window.onload = async () => {
+    checkIfPayGateOnboardingNeedsRedirect();
+    __ui_html_showProviderPane = /t/i.test('<%-startOnProviderPane%>');
+    await loadScript('/lib/semantic/site.min.js');
+    await loadScript('/lib/semantic/dimmer.min.js');
+    await loadScript('/lib/semantic/modal.min.js');
+    await loadScript('/lib/semantic/transition.min.js');
+    await loadStyles('/lib/semantic/button.min.css');
+    await loadStyles('/lib/semantic/container.min.css');
+    await loadStyles('/lib/semantic/dimmer.min.css');
+    await loadStyles('/lib/semantic/divider.min.css');
+    await loadStyles('/lib/semantic/header.min.css');
+    await loadStyles('/lib/semantic/icon.min.css');
+    await loadStyles('/lib/semantic/image.min.css');
+    await loadStyles('/lib/semantic/input.min.css');
+    await loadStyles('/lib/semantic/label.min.css');
+    await loadStyles('/lib/semantic/loader.min.css');
+    await loadStyles('/lib/semantic/modal.min.css');
+    await loadStyles('/lib/semantic/placeholder.min.css');
+    await loadStyles('/lib/semantic/segment.min.css');
+    await loadStyles('/lib/semantic/transition.min.css');
+    await loadStyles('/lib/main.css');
+    await loadScript('/lib/web3.min.js');
+    await loadScript('/lib/showdown.min.js');
+    await loadScript('https://checkout.stripe.com/checkout.js');
+    loadImages();
+    await detectWallet();
+    displayWallet();
+    hideRetarget();
+    rescale_scalables();
+    rejigPanes();
+    await validations();
+    $('#email').hide();
+    $('#loading').hide();
+    showPayProvider();
+    await loadSVGs();
+    $('#start-here').fadeIn().fadeOut().fadeIn().fadeOut().fadeIn().delay(2500).fadeOut();
+    $('.popup-check-wallet').fadeOut(0);
+    populateProviderAddressFromUrlLine();
+    showMessagesFromUrlLine();
+    window.history.replaceState('', '', __ui_html_showProviderPane ? '/reap' : '/pay');
+  }
+
+  // load in scripts when spinner showing
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s;
+      s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // load in styles when spinner showing
+  function loadStyles(src) {
+    return new Promise(function (resolve, reject) {
+      var s;
+      l = document.createElement('link');
+      l.rel = "stylesheet";
+      l.type = "text/css";
+      l.href = src;
+      l.onload = resolve;
+      l.onerror = reject;
+      document.head.appendChild(l);
+    });
+  }
+
+  // load lazy images
+  function loadImages() {
+    for (let img of $("img[lazy-src]")) {
+      $(img).attr("src", $(img).attr('lazy-src'));
+    }
+  }
+
+  /** WALLETS **/
+
+  /**
+   * Setup window.web3 to be the wallet's if available or offline if not (just for signing).
+   * 
+   * Sets up a timer to check for wallet being logged in and address changes.
+   */
+  function detectWallet() {
+    let walletAccount = null
+    web3 = new Web3();
+
+    // Modern dapp browsers...
+    if (window.ethereum) {
+      (async () => {
+        try {
+          await ethereum.enable();
+          window.web3 = new Web3(ethereum);
+          walletAccount = (await web3.eth.getAccounts())[0];
+        } catch (e) {/*noop*/ }
+
+        setData('walletAddress', walletAccount);
+        displayWallet();
+
+        setInterval(async function () {
+          let walletAccount = null;
+          try {
+            walletAccount = (await web3.eth.getAccounts())[0];
+          } catch (e) {/*noop*/ }
+          if (walletAccount !== data['walletAddress']) {
+            setData('walletAddress', walletAccount);
+            displayWallet();
+          }
+        }, 500);
+      })();
+    }
+  }
+
+  function displayWallet() {
+    if (data && data['walletAddress']) {
+      $('.no-wallet').hide();
+      $('.has-wallet').show();
+    } else {
+      $('.no-wallet').show();
+      $('.has-wallet').hide();
+    }
+  }
+
+  function popupCheckWallet() {
+    $('.popup-check-wallet').fadeIn().delay(4000).fadeOut();
+  }
+
+  /**
+   * Sign message for address.
+   * 
+   * @param {string} address - '0x' pre-pended address to sign for
+   * @param {string} message - some text message to sign
+   * @param {string} secrete - optional secret for address:  if wallet is signing, we don't have it.
+   * @returns {string} signature
+   */
+  async function sign(address, message, secret) {
+    let isWalletAddress = data['walletAddress'] === address;
+    if (isWalletAddress) {
+      popupCheckWallet();
+      return (await web3.eth.personal.sign(message, address));
+    } else {
+      return web3.eth.accounts.sign(message, secret).signature;
+    }
+  }
+
+  /**
+   * Recover original signing address from signature for message.
+   * 
+   * @param {string} message - passed into 'sign'
+   * @param {string} signature - returned from 'sign'
+   * @returns {string} address - passed into 'sign'
+   */
+  function recover(message, signature) {
+    return web3.eth.accounts.recover(message, signature);
+  }
+
+  /** RESCALE & CENTER ALL content-box DIVs **/
+
+  // divs with .content-box class can be designed using pixel offsets and absolute coordinates
+  // these will scale to their container
+  //
+  // these will be centered in their container
+  var rescale_scalables = function () {
+    var elements = Array.from(document.getElementsByClassName("content-box"));
+    elements.forEach((element) => {
+      var container = element.parentElement;
+      var scale_height = container.offsetHeight / element.offsetHeight;
+      var scale_width = container.offsetWidth / element.offsetWidth;
+      var scale = Math.min(scale_height, scale_width);
+      var translate_x = (-1 * ((element.offsetWidth - (element.offsetWidth * scale)) / 2)) / scale;
+      var translate_y = (-1 * ((element.offsetHeight - (element.offsetHeight * scale)) / 2)) / scale;
+      var inline_style = 'transform: scale(' + scale + ') translate(' + translate_x + 'px,' + translate_y + 'px);';
+      inline_style = inline_style + ' -webkit-transform: scale(' + scale + ') translate(' + translate_x + 'px,' + translate_y + 'px);';
+      inline_style = inline_style + ' -ms-transform: scale(' + scale + ') translate(' + translate_x + 'px,' + translate_y + 'px);';
+      element.setAttribute('style', inline_style);
+      element.style.position = 'absolute';
+      var top = (container.offsetHeight - (scale * element.offsetHeight)) / 2;
+      var left = (container.offsetWidth - (scale * element.offsetWidth)) / 2;
+      top = (top > 0) ? top : 0;
+      left = (left > 0) ? left : 0;
+      element.style.top = top + 'px';
+      element.style.left = left + 'px';
+    });
+  };
+
+  var hideRetarget = function () {
+    console.log(`retargetAvailable? :: <%-retargetAvailable%>`)
+    if ('true' !== '<%-retargetAvailable%>') {
+      $('#payee-retarget').hide();
+      $('#payer-retarget').hide();
+    }
+  }
+
+  // @param millis {number} - to delay
+  delay = async function(millis) {
+    return new Promise((resolve, reject) => { setTimeout(() => { resolve(); }, millis); });
+  }
+
+  window.addEventListener("resize", () => rescale_scalables());
+
+  async function checkIfPayGateOnboardingNeedsRedirect() {
+    if (is3CP0()) return;
+    if (/#onboarded/.test(document.location.hash)) {
+      const urlParams = new URLSearchParams(window.location.search);
+      let address = urlParams.get('address');
+      let state = btoa(JSON.stringify({"goPath":"/reap","stopPath":"/reap"}));
+      window.location = `/v1/provider?address=${address}&state=${state}`;
+    }
+  }
+
+  function showMessagesFromUrlLine() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let error = urlParams.get('error') ? atob(urlParams.get('error')) : null;
+    let note = urlParams.get('note') ? atob(urlParams.get('note')) : null;
+    if (note) {
+      raiseProviderNotification(note, false);
+    }
+    if (error) {
+      raiseProviderNotification(error, true);
+    }
+  }
+
+  function populateProviderAddressFromUrlLine() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let address = urlParams.get('address');
+    if (address) {
+      setData('providerAddress', address);
+    }
+  }
+
+/* load SVGs asynchronously */
+function loadSVGs() {
+  (async () => {
+    $('.infographic-loader').animate({ opacity: 1 }, 500);
+    $('#pay-provider-svg .has-wallet').hide();
+    $('#pay-provider-svg .no-wallet').hide();
+    $('#gratis-svg .has-wallet').hide();
+    $('#gratis-svg .no-wallet').hide();
+    $('#get-paid-infographic .has-wallet').hide();
+    $('#get-paid-infographic .no-wallet').hide();
+    let svg = await fetch('lib/pay-with-wallet.svg').then(res => res.text());
+    $('#pay-provider-svg .has-wallet').html(svg);
+    svg = await fetch('lib/pay.svg').then(res => res.text());
+    $('#pay-provider-svg .no-wallet').html(svg);
+    svg = await fetch('lib/gratis-with-wallet.svg').then(res => res.text());
+    $('#gratis-svg .has-wallet').html(svg);
+    svg = await fetch('lib/gratis.svg').then(res => res.text());
+    $('#gratis-svg .no-wallet').html(svg);
+    svg = await fetch('lib/payee-with-wallet.svg').then(res => res.text());
+    $('#get-paid-infographic .has-wallet').html(svg);
+    svg = await fetch('lib/payee.svg').then(res => res.text());
+    $('#get-paid-infographic .no-wallet').html(svg);
+    $('.infographic-loader').hide();
+    linkIndicatorsToImageMaps();
+    displayWallet();
+  })();
+}
+
+/* jQuery 2-WAY DATA-BINDING */$
+
+  var data = {}; // object for all bound values
+
+  // bind all values to eachother and to global 'data' by name.
+  $("*[bind]").on('change keyup input', function (e) {
+    var to_bind = $(this).attr('bind');
+    data[to_bind] = $(this).val();
+    $("*[bind='" + to_bind + "']").val(data[to_bind]);
+    validations();
+  })
+
+  // @param {string} to_bind - elements with this 'data' attribute string will be set to value
+  // @param {string} value - to set elements to
+  function setData(to_bind, value) {
+    data[to_bind] = value;
+    $("*[bind='" + to_bind + "']").val(value);
+    $("*[bind='" + to_bind + "']").text(value);
+    validations();
+  }
+
+  // validations to call on new values
+  async function validations() {
+    await enableWidgets();
+    fixAmount();
+  }
+
+  /** EVENTS **/
+
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.event === 'oh-ledger-ok') {
+      if (!e.data.detail) {
+        raiseSubscriberNotification("Entry added.", false);
+      } else {
+        raiseSubscriberNotification(e.detail, false);
+      }
+    } else if (e.data && e.data.event === 'oh-ledger-error') {
+      raiseSubscriberNotification(e.data.detail, true);
+    }
+  }, false);
+
+  window.document.addEventListener('oh-ledger-ok-nomodal', (e) => {
+    if (!e.detail) {
+      setSubscriberNotification("Entry added.", false);
+    } else {
+      setSubscriberNotification(e.detail, false);
+    }
+  }, false);
+
+  window.document.addEventListener('oh-ledger-error-nomodal', (e) => {
+    setSubscriberNotification(e.detail, true);
+  }, false);
+
+  window.document.addEventListener('oh-ledger-ok-provider', (e) => {
+    if (!e.detail) {
+      raiseProviderNotification("Entry added.", false);
+    } else {
+      raiseProviderNotification(e.detail, false);
+    }
+  }, false);
+
+  window.document.addEventListener('oh-ledger-error-provider', (e) => {
+    raiseProviderNotification(e.detail, true);
+  }, false);
+
+  window.document.addEventListener('oh-ledger-ok-nomodal-provider', (e) => {
+    if (!e.detail) {
+      setProviderNotification("Entry added.", false);
+    } else {
+      setProviderNotification(e.detail, false);
+    }
+  }, false);
+
+  window.document.addEventListener('oh-ledger-error-nomodal-provider', (e) => {
+    setProviderNotification(e.detail, true);
+  }, false);
+
+  /* OTHER UTILITY HELPERS */
+
+  // switch panes around
+  function rejigPanes() {
+    if (__ui_html_showProviderPane) {
+      $('#pay-someone-infographic').hide();
+      $('#pay-someone-content-box').hide();
+      $('#switch-to-get-paid').animate({ opacity: 0 }, 50);
+      $('#switch-to-get-paid').css({ "cursor": "none", "pointer-events": "none" });
+      $('#switch-to-pay-someone').animate({ opacity: 1 }, 400);
+      $('#switch-to-pay-someone').css({ "cursor": "pointer", "pointer-events": "auto" });
+      $('#get-paid-box').fadeIn(400);
+      $('#pay-someone-infographic-nav').hide();
+      if (__ui_html_showInfographicNav) {
+        $('#get-paid-infographic-nav').fadeIn(400);
+        $('#get-paid-infographic').hide();
+      } else {
+        $('#get-paid-infographic-nav').hide();
+        $('#get-paid-infographic').fadeIn(400);
+      }
+    } else {
+      $('#pay-someone-content-box').fadeIn(400);
+      $('#switch-to-get-paid').animate({ opacity: 1 }, 400);
+      $('#switch-to-get-paid').css({ "cursor": "pointer", "pointer-events": "auto" });
+      $('#switch-to-pay-someone').animate({ opacity: 0 }, 50);
+      $('#switch-to-pay-someone').css({ "cursor": "none", "pointer-events": "none" });
+      $('#get-paid-infographic').hide();
+      $('#get-paid-box').hide();
+      $('#get-paid-infographic-nav').hide();
+      if (__ui_html_showInfographicNav) {
+        $('#pay-someone-infographic-nav').fadeIn(400);
+        $('#pay-someone-infographic').hide();
+      } else {
+        $('#pay-someone-infographic-nav').hide();
+        $('#pay-someone-infographic').fadeIn(400);
+      }
+    }
+      if (__ui_html_showInfographicNav) {
+        $('.right').removeClass('infographic-exposed');
+        $('#switch-to-pay-someone').removeClass('infographic-exposed');
+        $('#switch-to-get-paid').removeClass('infographic-exposed');
+      } else {
+        $('.right').addClass('infographic-exposed');
+        $('#switch-to-pay-someone').addClass('infographic-exposed');
+        $('#switch-to-get-paid').addClass('infographic-exposed');
+      }
+  }
+
+  // validate whether buttons should be enabled
+  async function enableWidgets() {
+    enableProviderWidgets();
+    await enableSubscriberWidgets();
+  }
+
+
+  // @returns {boolean} if form should cease to work
+  function is3CP0() {
+    return $('#email').val() || $('#email').text()
+  }
+
+  function enableProviderWidgets() {
+    $('.button.provider.need-data').addClass('disabled');
+    $('#providerAddressC2C').css('color','black');
+    $('#providerSecretC2C').css('color','black');
+    $('#retarget-provider-ok').addClass('disabled');
+    $('#show-void-page-button').addClass('disabled');
+    if (is3CP0()) return;
+    let walletAddress = data['walletAddress'];
+    let address = data['providerAddress'];
+    let fromAddress = data['fromAddress'];
+    let secret = data['providerSecret'];
+    let accountId = data['accountId'];
+    if (accountId && accountId.length > 0) {
+      $('#retarget-provider-ok').removeClass('disabled');
+    }
+    let message = web3.utils.sha3((new Date()).toISOString());
+    if (fromAddress && fromAddress.length == 42) {
+      $('#show-void-page-button').removeClass('disabled');      
+    }
+    if (!walletAddress && (!address || !secret)) {
+      showProviderNotification("Generate or enter a valid address and signing key.");
+      return;
+    }
+    if (!walletAddress && address.length != 42) {
+      showProviderNotification("Enter a valid address or re-generate a pair using the 'Generate' button.  A valid address is 42 characters long starting with '0x'.");
+      return;
+    }
+    $('#providerAddressC2C').css('color','orangered');
+    if (!walletAddress && secret.length != 66) {
+      showProviderNotification("Enter a valid signing key or re-generate a pair using the 'Generate' button.  A valid signing key is 66 characters long starting with '0x'.");
+      return;
+    }
+    $('#providerSecretC2C').css('color','orangered');
+
+    if (!walletAddress) {
+      let valid = false;
+      try {
+        valid = web3.eth.accounts.recover(web3.eth.accounts.sign(message, secret)).toLowerCase() == address.toLowerCase()
+      } catch (err) { /* noop */
+        showProviderNotification(err.toString());
+      }
+      if (!valid) {
+        showProviderNotification("The provided signing key is not for the provided address.  Please correct the values or re-generate a pair using the 'Generate' button.");
+        return;
+      }
+    }
+
+    showProviderNotification("Press the blue button to continue registration.", 'lightblue');
+    $('.button.provider.need-data').removeClass('disabled');
+  }
+
+  async function enableSubscriberWidgets() {
+    $('.button.subscriber.need-pay-data').addClass('disabled');
+    $('.button.subscriber.need-gratis-data').addClass('disabled');
+    $('.button.subscriber.need-creds-data').addClass('disabled');
+    $('.button.subscriber.need-address').addClass('disabled');
+    $('#retarget-subscriber-ok').addClass('disabled');
+    $('#subscriberAddressC2C').css('color','black');
+    $('#subscriberSecretC2C').css('color','black');
+    if (is3CP0()) return;
+
+    let email = data['emailOnPayment'];
+    if (/^\S+@\S+\.\S+$/g.test(email)) {
+      $('#retarget-subscriber-ok').removeClass('disabled');
+    }
+
+    let walletAddress = data['walletAddress'];
+    let address = data['subscriberAddress'];
+    let secret = data['subscriberSecret'];
+    if (!walletAddress && (!address || address.length != 42)) {
+      showSubscriberNotification("Enter a valid address or re-generate a pair using the 'Generate' button.  A valid address is 42 characters long starting with '0x'.");
+      return;
+    }
+    $('#subscriberAddressC2C').css('color','orangered');
+    $('.button.subscriber.need-address').removeClass('disabled');
+    if (!walletAddress && (!secret || secret.length != 66)) {
+      showSubscriberNotification("Enter a valid signing key or re-generate a pair using the 'Generate' button.  A valid signing key is 66 characters long starting with '0x'.");
+      return;
+    }
+    $('#subscriberSecretC2C').css('color','orangered');
+
+    if (!walletAddress) {
+      let message = web3.utils.sha3((new Date()).toISOString());
+      let valid = false;
+      try {
+        valid = web3.eth.accounts.recover(web3.eth.accounts.sign(message, secret)).toLowerCase() == address.toLowerCase();
+      } catch (err) { /* noop */ }
+      if (!valid) {
+        showSubscriberNotification("The provided signing key is not for the provided address.  Please correct the values or re-generate a pair using the 'Generate' button.");
+        return;
+      }
+    }
+
+    $('.button.subscriber.need-creds-data').removeClass('disabled');
+
+    if (isPayProviderVisible()) {
+      enableSubscriberWidgetsForPay();
+    } else {
+      enableSubscriberWidgetsGratis();
+    }
+  }
+
+  function enableSubscriberWidgetsGratis() {
+    showSubscriberNotification("Press the blue button to continue adding a free entry.", 'lightblue');
+    $('.button.subscriber.need-gratis-data').removeClass('disabled');
+  }
+
+  function enableSubscriberWidgetsForPay() {
+    let amount = data['amount'];
+    if (!amount) {
+      showSubscriberNotification("Enter a valid amount in <%-currency%>.  Must be at least <%-minimum_amount%> <%-currency%>");
+      return;
+    }
+    let isSufficientAmount = !isNaN(amount) && parseFloat(amount) >= parseFloat('<%-minimum_amount%>');
+    if (!isSufficientAmount) {
+      showSubscriberNotification("Amount must be at least <%-minimum_amount%> <%-currency%>");
+      return;
+    }
+    let targetAddress = data['targetAddress'];
+    if (!targetAddress) {
+      showSubscriberNotification('Enter a valid "provider address".');
+      return;
+    }
+    if (targetAddress.length != 42) {
+      showSubscriberNotification('Enter a valid "provider address".  A valid address is 42 characters long starting with "0x".');
+      return;
+    }
+
+    showSubscriberNotification("Press the blue button to continue payment.", 'lightblue');
+    $('.button.subscriber.need-pay-data').removeClass('disabled');
+  }
+
+  // show pay-provider widgets for subscriber 
+  function showPayProvider() {
+    $('#pay-provider').show();
+    $('#pay-provider-svg').show();
+    $('#gratis').hide();
+    $('#gratis-svg').hide();
+    validations();
+  }
+
+  // show gratis widgets for subscriber
+  function showGratis() {
+    $('#pay-provider').hide();
+    $('#pay-provider-svg').hide();
+    $('#gratis').show();
+    $('#gratis-svg').show();
+    validations();
+  }
+
+  // @returns {boolean} if pay-provider widgets are visible
+  function isPayProviderVisible() {
+    return $('#pay-provider').is(':visible');
+  }
+
+  // @returns {boolean} if gratis widgets are visible
+  function isGratisVisible() {
+    return $('#gratis').is(':visible');
+  }
+
+  // shows gratis page in modal
+  function showGratisPage() {
+    (async () => {
+      if (is3CP0()) return;
+      let address = data['walletAddress'] || data['subscriberAddress'];
+      let secret = data['subscriberSecret'];
+      let message = (new Date()).toISOString();
+      let signature = await sign(address, message, secret);
+      $('#gratis-content').attr('src', `/v1/gratis.html?address=${address}&signature=${signature}&message=${message}`);
+      $('#gratis-modal').modal('show');
+    })();
+  }
+
+  // shows ledger page in modal
+  function showLedgerPage() {
+    if (is3CP0()) return;
+    let address = data['walletAddress'] || data['subscriberAddress'];
+    $('#ledger-content').attr('src', `/v1/ledger.html?address=${address}`);
+    $('#ledger-modal').modal('show');
+  }
+
+  // shows ledger page in modal
+  function showVoidPage() {
+    (async () => {
+      if (is3CP0()) return;
+      let address = data['walletAddress'] || data['providerAddress'];
+      let fromAddress = data['fromAddress'];
+      let signature = await sign(address, `${address}${fromAddress}`.toLowerCase(), data['providerSecret']);
+      $('#void-content').attr('src', `/v1/void.html?providerAddress=${address}&subscriberAddress=${fromAddress}&signature=${signature}`);
+      $('#void-modal').modal('show');
+    })();
+  }
+
+  // validate and fix-up amount value
+  function fixAmount() {
+    let amount = data['amount'];
+    let original = amount;
+    if (!amount) return;
+    let matches = `${amount}`.match(/[0-9]*\.?[0-9]{0,2}/g);
+    amount = matches.length > 0 ? matches[0] : '';
+    if (original == amount) return;
+    setData('amount', amount);
+  }
+
+  // generate a new address/signatureKey pair
+  // @param {string} addressBind - to set with the new address value
+  // @param {string} signatureKeyBind - to set with the new private key
+  function generate(addressBind, signatureKeyBind) {
+    if (is3CP0()) return;
+    let res = web3.eth.accounts.create();
+    setData(signatureKeyBind, null);
+    setData(addressBind, res.address);
+    setData(signatureKeyBind, res.privateKey);
+  }
+
+  function registerConfirm() {
+    if (data['walletAddress']) {
+      register();
+    } else {
+      $('#register-confirm-modal').modal('show');
+    }
+  }
+
+  function register() {
+    if (is3CP0()) return;
+    $('#register-confirm-modal').modal('hide');
+    let address = data['walletAddress'] || data['providerAddress'];
+    let state = btoa(JSON.stringify({ "goPath": "/reap#onboarded", "stopPath": "/reap", "address":address}));
+    window.location = `/onboard?state=${state}`;
+  }
+
+  function payConfirm() {
+    if (data['walletAddress']) {
+      shunt();
+    } else {
+      $('#pay-confirm-modal').modal('show');
+    }
+  }
+
+  function shunt() {
+    if (is3CP0()) return;
+
+    handler = StripeCheckout.configure({
+      key: '<%-publishableKey%>',
+      image: 'https://stripe.com/img/documentation/checkout/marketplace.png',
+      locale: 'auto',
+      token: function (token) {
+        fetch(`/v1/shunt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            paymentGatewayToken: token.id,
+            providerAddress: data['targetAddress'],
+            subscriberAddress: data['walletAddress'] || data['subscriberAddress'],
+            amountCents: Math.floor(data['amount'] * 100)
+          })
+        })
+          .then((result) => {
+            if (result.status == 200) {
+              raiseSubscriberNotification('OK, success, payment processed.', false);
+            } else {
+              result.text().then(txt => raiseSubscriberNotification(txt, true));
+            }
+          })
+          .catch(e => raiseSubscriberNotification(e.toString(), true));
+      }
+    });
+
+    $('#pay-confirm-model-button').addClass('loading');
+    let currency = '<%-currency%>';
+    let amount = Math.floor(data['amount'] * 100);
+    handler.open({
+      name: 'overhide-ledger',
+      description: `oh-ledger from:${data['walletAddress'] || data['subscriberAddress']} to:${data['targetAddress']}`,
+      currency: currency,
+      amount: amount
+    });
+    $('#pay-confirm-model-button').removeClass('loading');
+    $('#pay-confirm-modal').modal('hide');
+  }
+
+  function retargetProvider() {
+    (async () => {
+      if (is3CP0()) return;
+      $('#retarget-provider-ok').addClass('loading');
+      let accountId = data['accountId'];
+      let address = data['walletAddress'] || data['providerAddress'];
+      try {
+        var signature = await sign(address, `${address}${accountId}`.toLowerCase(), data['providerSecret']);
+      } catch (err) {
+        $('#retarget-provider-ok').removeClass('loading');
+        throw err;
+      }      
+      fetch(`/v1/retarget-provider`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          accountId: accountId,
+          address: address,
+          signature: signature
+        })
+      })
+      .then((result) => {
+        $('#retarget-provider-ok').removeClass('loading');
+        $('#retarget-provider-modal').modal('hide');
+        if (result.status == 200) {
+          raiseProviderNotification('OK, success, check your email.', false);
+        } else {
+          result.text().then(txt => raiseProviderNotification(txt, true));
+        }
+      })
+      .catch(e => raiseProviderNotification(e.toString(), true));
+    })();
+  }
+
+  function retargetSubscriber() {
+    (async () => {
+      if (is3CP0()) return;
+      $('#retarget-subscriber-ok').addClass('loading');
+      let email = data['emailOnPayment'];
+      let address = data['walletAddress'] || data['subscriberAddress'];
+      try {
+        var signature = await sign(address, `${address}${email}`.toLowerCase(), data['subscriberSecret']);
+      } catch (err) {
+        $('#retarget-subscriber-ok').removeClass('loading');
+        throw err;
+      }      
+      fetch(`/v1/retarget-subscriber`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          email: email,
+          address: address,
+          signature: signature
+        })
+      })
+      .then((result) => {
+        $('#retarget-subscriber-ok').removeClass('loading');
+        $('#retarget-subscriber-modal').modal('hide');
+        if (result.status == 200) {
+          raiseSubscriberNotification('OK, success, check your email.', false);
+        } else {
+          result.text().then(txt => raiseSubscriberNotification(txt, true));
+        }
+      })
+      .catch(e => raiseSubscriberNotification(e.toString(), true));
+    })();
+  }
+
+  // @param {string} which - data key to copy
+  function copyToClipboard(which) {
+    let str = data[which];
+    if (!str) return;
+    const el = document.createElement('textarea');
+    el.value = str;
+    el.setAttribute('readonly', '');
+    el.style.position = 'absolute';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+  }
+
+  /* NOTIFICATION RELATED */
+
+  // show notification text
+  function showProviderNotification(msg, color) {
+    if (!color) {
+      color = 'gold';
+    }
+    $('#notificationTextProvider').css('color', color);
+    $('#notificationTextProvider').html(msg);
+    $('#notificationTextProvider').animate({ display: "block" });
+  }
+
+  // raise modal to show provider notification and show notification text
+  function raiseProviderNotification(providerNotification, isError) {
+    $('#notification-modal').modal('show');
+    $('#notification-modal-text').css('color', isError ? 'orangered' : 'green');
+    setProviderNotification(providerNotification, isError);
+  }
+
+  // show provider notification text
+  function setProviderNotification(providerNotification, isError) {
+    setData("result", providerNotification);
+    showProviderNotification(providerNotification, isError ? 'orangered' : 'green');
+  }
+
+  // show notification text
+  function showSubscriberNotification(msg, color) {
+    if (!color) {
+      color = 'gold';
+    }
+    $('#notificationTextSubscriber').css('color', color);
+    $('#notificationTextSubscriber').html(msg);
+    $('#notificationTextSubscriber').animate({ display: "block" });
+  }
+
+  // raise modal to show subscriber notification and show notification text
+  function raiseSubscriberNotification(subscriberNotification, isError) {
+    $('#notification-modal').modal('show');
+    $('#notification-modal-text').css('color', isError ? 'orangered' : 'green');
+    setSubscriberNotification(subscriberNotification, isError);
+  }
+
+  // show subscriber notification text
+  function setSubscriberNotification(subscriberNotification, isError) {
+    setData("result", subscriberNotification);
+    showSubscriberNotification(subscriberNotification, isError ? 'orange' : 'lightgreen');
+  }
+
+  function setProviderStatus(msg) {
+    $('#statusTextProvider').html(msg);
+    $('#statusTextProvider').animate({ display: "block" });
+  }
+
+  function setSubscriberStatus(msg) {
+    $('#statusTextSubscriber').html(msg);
+    $('#statusTextSubscriber').animate({ display: "block" });
+  }
+
+  $(document).not("#notificationTextProvider").click(() => $('#notificationTextProvider').animate({ display: "none" }));
+  $(document).not("#notificationTextSubscriber").click(() => $('#notificationTextSubscriber').animate({ display: "none" }));
+
+  /**
+   * Links indicator arrows to flash when svg image map is hovered or clicked.
+   *
+   * Look for all "indicators": 
+   *
+   * ```
+   * <span id="blahblah" class="indicator"><span></span></span>
+   * ```
+   *
+   * These are target locations for an indicator arrow.  The indicator arrow is defined
+   * in CSS with selector `.indicatorPopup:before`.
+   *
+   * The *id* from the above span is matched with a `xlink:href` from embedded *svg* images
+   * in the document.
+   * 
+   * Embedded svg documents (created by draw.io for example) can have a hashtag link.  This
+   * hashtag link will appear in the svg as an `<a xlink:href="#<id>"..>..</a>`.  If this 
+   * *id* matches an *id* on a `span.indicator`, hovering over or clicking on the *svg* 
+   * element with this anchor will cause the indicator image to flash.
+   * 
+   */
+  function linkIndicatorsToImageMaps() {    
+    for (let indicator of $("*[indicator]")) {
+      let id = $(indicator).attr('indicator');
+      $(indicator).prepend(`<span class="indicator ${id}"><span></span></span>`);     
+      console.log(`Adding span.indicator with .${id} to embedded SVG image map anchor hrefs.`);
+      $(`a[*|href='#${id}']`).click(() => {return false;});
+      $(`a[*|href='#${id}']`).hover(() => { 
+        indicate($(`.${id}`)); 
+        return false; 
+      }, () => { 
+        unindicate($(`.${id}`)); 
+        return false; 
+      });
+      function indicate(target) {
+        target.addClass('indicatorPopup');
+        setProviderStatus(target.closest('.provider[help]').attr('help'));
+        setSubscriberStatus(target.closest('.subscriber[help]').attr('help'));
+      }
+      function unindicate(target) {
+        target.removeClass('indicatorPopup');
+        setProviderStatus('');
+        setSubscriberStatus('');
+      }
+    }
+  }
+
+  /* jQuery HOVER HELP */
+
+  // @return jQuery instance of an anchor with href having 'id' matching an 'indicator' attribute of first element within passed in 'indicatorContainer'
+  function getSvgAHrefCorrespondingToIndicator(indicatorContainer) {
+    if ($(indicatorContainer).attr('indicator')) {
+      var indicator = $(indicatorContainer);
+    } else {
+      var indicator = $(indicatorContainer).find("*[indicator]").first();
+    }
+    if (indicator) {
+      let id = $(indicator).attr('indicator');
+      return $(`a[*|href='#${id}']`);
+    }      
+  }
+
+  // all elements with 'provider' class and a 'help' attribute will show the 'help' attribute value on mouse hover
+  $(".provider[help]").hover(
+    function () { 
+      getSvgAHrefCorrespondingToIndicator($(this)).addClass('indicatorBolden');
+      setProviderStatus($(this).attr('help')); 
+    },
+    function () { 
+      getSvgAHrefCorrespondingToIndicator($(this)).removeClass('indicatorBolden');
+      setProviderStatus(''); 
+    });
+
+  // all elements with 'subscriber' class and a 'help' attribute will show the 'help' attribute value on mouse hover
+  $(".subscriber[help]").hover(
+    function () { 
+      var target = getSvgAHrefCorrespondingToIndicator($(this)).addClass('indicatorBolden');
+      setSubscriberStatus($(this).attr('help')); 
+    },
+    function () { 
+      getSvgAHrefCorrespondingToIndicator($(this)).removeClass('indicatorBolden');
+      setSubscriberStatus(''); 
+    });
+
+</script>
+
+</html>

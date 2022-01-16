@@ -1,0 +1,74 @@
+var oh_ledger_transact = (function() {
+  require('https://checkout.stripe.com/checkout.js');
+
+  var gotToken = false; // track if token function called
+
+  /**
+  * Trigger Stripe payment and add entry to ledger.
+  *
+  * Raises 'oh-ledger-ok' event against the 'window.parent' on success.
+  *
+  * Raises 'oh-ledger-error' event with {detail:'error string'} against the 'window.parent' on failure.
+  *
+  * @param {number} amountCents - amount in cents to pay. 
+  * @param {string} fromAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
+  * @param {string} toAddress - ledger *address* as a 42 character *hex* string starting with '0x'.
+  */ 
+  return (amountCents, fromAddress, toAddress) => {
+    let currency = '<%-currency%>';
+
+    let handler = StripeCheckout.configure({
+      key: '<%-publishableKey%>',
+      image: 'https://stripe.com/img/documentation/checkout/marketplace.png',
+      locale: 'auto',
+      token: function (token) {
+        gotToken = true;
+        fetch(`<%-uri%>/v1/shunt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            paymentGatewayToken: token.id,
+            providerAddress: toAddress,
+            subscriberAddress: fromAddress,
+            amountCents: amountCents
+          })
+        })
+          .then((result) => {
+            if (result.status == 200) {
+              window.parent.postMessage({event: 'oh-ledger-ok'}, '*');
+            } else {
+              result.text().then(txt => {
+                window.parent.postMessage({ event: 'oh-ledger-error', detail: txt }, '*');
+              });
+            }
+          })
+          .catch(e => {
+            window.parent.postMessage({ event: 'oh-ledger-error', detail: String(e) }, '*');
+          });
+      },
+      opened: function() {gotToken = false;},
+      closed: function() {if (!gotToken) window.parent.postMessage({ event: 'oh-ledger-error', detail: 'user exit' }, '*');}
+    });
+
+    handler.open({
+      name: 'overhide-ledger',
+      description: `oh-ledger from:${fromAddress} to:${toAddress}`,
+      currency: currency,
+      amount: amountCents
+    });
+  };
+
+ /**
+  * Load a script.
+  * 
+  * @param {string} name - to load
+  * @returns {Promise} resolved onload
+  */
+  function require(name) {
+    var script = document.createElement('script');
+    script.onload = function () {
+    };
+    script.src = name;
+    document.head.appendChild(script);
+  };
+})();

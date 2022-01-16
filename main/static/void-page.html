@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/site.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/reset.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/button.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/container.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/header.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/icon.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/input.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/label.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/placeholder.min.css">
+  <link rel="stylesheet" type="text/css" href="/lib/semantic/segment.min.css">
+
+  <script src="/lib/jquery-3.3.1.min.js"></script>
+
+  <style>
+    @font-face {
+      font-familiy: Lato;
+      src: url('lib/font/lato-v14-latin-regular.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    html,body {
+      font-family: Lato;
+      font-variant: small-caps;
+      font-size: 2vmin !important;;
+      max-width: 100vw;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    .content-box {
+      max-width: 700px;
+      width: 100%;
+    }
+
+    #table .ui.segment {
+      font-size: smaller;
+    }
+
+    .ui.label {
+      width: 9em;
+    }
+
+    .blued {
+      color: blue;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ui basic center aligned segment">
+    <div id="main">
+      <h5>Please confirm you wish to void transactions from <span class="blued"><%-fromAddress%></span> to <span class="blued"><%-toAddress%></span></h5>
+      <div id="ok-button" class="ui primary button" onclick="ok()">Yes, void transactions</div>
+      <h5>Transactions (<%-num_txs%> of <%-num_all_txs%> shown):</h5>
+      <div class="ui basic center aligned segment">
+        <div id="table"></div>
+      </div>
+    </div>
+    <div id='error'>
+      <h5>There was a problem:</h5>
+      <p><%-error%></p>
+    </div>
+  </div>
+</body>
+
+<script>
+
+window.onload = function() {
+  let error = updateDisplay();
+  if (!error) {
+    fillTable();
+  }
+}
+
+function updateDisplay() {
+  let error = '<%-error%>';
+  if (error) {
+    $('#main').hide();
+    $('#error').show();
+    window.parent.document.dispatchEvent(new CustomEvent('oh-ledger-error-nomodal-provider', {detail:error}));
+  } else {
+    $('#main').show();
+    $('#error').hide();
+  }
+  return error;
+}
+
+function fillTable() {
+  let data = JSON.parse('<%-txs%>');
+  let rows = '';
+  for (tx of data) {
+    let row = `<div class="ui segment yellow">
+                <div class="ui fluid labeled input">
+                  <div class="ui basic label">From</div>
+                  <input readonly type="text" value="${tx.from}"/>
+                </div>
+                <div class="ui fluid labeled input">
+                  <div class="ui basic label">To</div>
+                  <input readonly type="text" value="${tx.to}"/>
+                </div>
+                <div class="ui fluid labeled input">
+                  <div class="ui basic label">Amount (<%-currency%>)</div>
+                  <input readonly type="text" value="${fixCentsToDollars(tx.amountusdcents)}"/>
+                </div>
+                <div class="ui fluid labeled input">
+                  <div class="ui basic label">From</div>
+                  <input readonly type="text" value="${(new Date(tx.transactionts)).toLocaleString()}"/>
+                </div>
+               </div>
+    `;
+    rows += row;
+  };
+  $('#table').html(rows);
+}
+
+function fixCentsToDollars(amount) {
+  amount = String(amount);
+  let dollars = amount.slice(0,-2);
+  let cents = amount.slice(-2);
+  if (!cents) cents = '0';
+  if (!dollars) dollars = '0';
+  cents = cents.length == 1 ? '0' + cents : cents;
+  return `${dollars}.${cents}`;
+}
+
+function ok() {
+  fetch(`/v1/go-void`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      providerAddress: '<%-toAddress%>',
+      subscriberAddress: '<%-fromAddress%>',
+      signature: '<%-signature%>'
+    })
+  })
+  .then((result) => {
+    if (result.status == 200) {
+      window.parent.document.dispatchEvent(new CustomEvent('oh-ledger-ok-provider',{detail:'Entries voided.'}));      
+    } else {
+      result.text().then(txt => {
+        window.parent.document.dispatchEvent(new CustomEvent('oh-ledger-error-provider', {detail:txt}));
+      });
+    }
+  })
+  .catch(e => {
+    window.parent.document.dispatchEvent(new CustomEvent('oh-ledger-error-provider', {detail:String(e)}));
+  });
+}
+
+</script>
+
+</html>

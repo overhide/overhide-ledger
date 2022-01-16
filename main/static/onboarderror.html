@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,italic,600,600italic,700,700italic,800,800italic,400|Roboto+Condensed:300,300italic,italic,700,700italic,400|Open+Sans+Condensed:300,300italic,700,400|PT+Sans+Narrow:700,400" rel="stylesheet" type="text/css">
+
+  <script src="lib/jquery-3.3.1.min.js"></script>
+
+  <script src="lib/underscore-min.js"></script>
+  <script src="lib/balancetext.min.js"></script>
+
+  <script src="lib/semantic/accordion.min.js"></script>
+  <script src="lib/semantic/nag.min.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="lib/semantic/accordion.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/button.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/container.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/grid.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/icon.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/input.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/nag.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/reset.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/segment.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/site.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/step.min.css">
+
+  <link rel="stylesheet" type="text/css" href="lib/webpage.css">
+  <link rel="stylesheet" type="text/css" href="lib/webpage-anim.css">
+
+</head>
+
+<body>
+  <div class="branding">
+    <img class="logo appear-delayed" src="lib/logo.png" />
+  </div>
+  <div class="hero">
+    <div class="main-hero in-left">
+      overhide-ledger registration
+    </div>
+  </div>
+
+  <div class="ui vertical stripe segment full-height appear-delayed">
+    <div class="ui vertical section middle aligned stackable grid container">
+      <div class="row centered">
+        <div class="two wide column">
+          <i class="times circle outline red huge icon" style="float: right;"></i>
+        </div>
+        <div class="ten wide column ">
+          <h3 id="error-text" class="balance-text ui" style="color:#ff8080;"></h3>
+        </div>
+      </div>
+      <div class="row centered">
+        <div class="twelve wide column full-height">
+          <div class="ui vertical section middle aligned stackable grid container">
+            <div class="row centered">
+              <div class="five wide column middle aligned full-height">
+                <button class="ui button-link basic button space-top orange large" onclick="window.close()">close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ui inline cookie nag">
+    <span class="title">
+      We use cookies to ensure that we give you the best experience on our website. If you continue to use this site we will
+      assume that you are happy with this.
+      <br/>
+      <button class="ui button-nag basic green button space-top tiny" onclick="cookies_ok()">fine</button>
+      <a href="https://overhide.io/lib/tos.html" target="_blank"><button class="ui button-nag basic inverted button space-top tiny">privacy policy</button></a>
+    </span>
+    <i class="close icon" onclick="cookies_ok()"></i>
+  </div>
+
+  <div class="ui vertical footer segment">
+    <div class="ui container">
+      <div class="ui stackable equal height stackable grid">
+        <div class="two wide column"></div>
+        <div class="four wide column">
+          <h4 class="ui header">overhide.io FOSS</h4>
+          <div class="ui link list">
+            <div class="item">Reddit: <a href="https://www.reddit.com/r/overhide/" target="_blank">r/overhide</a></div>
+          </div>
+        </div>
+        <div class="four wide column">
+          <h4 class="ui header">Legal</h4>
+          <div class="ui link list">
+            <a href="https://overhide.io/lib/tos.html" target="_blank" class="item">Terms of Service</a>
+          </div>
+        </div>
+        <div class="four wide column">
+          <h4 class="ui header">
+            <a href="https://twitter.com/overhideio" target="_blank"><i class="twitter icon large"></i></a>
+            <a href="https://www.linkedin.com/company/overhide-inc" target="_blank"><i class="linkedin icon large"></i></a>
+            <a href="https://www.reddit.com/r/overhide/" target="_blank"><i class="reddit icon large"></i></a>
+          </h4>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+<script>
+  window.onload = function() {
+    rebalanceTexts();
+    makeStepsVertical();
+    handleUrl();
+  }
+
+  /** URL PARSING **/
+
+  function handleUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let error = urlParams.get('error');
+    if (error) {
+      $("#error-text").text(atob(error));
+    }
+  }
+
+  /** UX toggling **/
+
+  $(document).ready(function() {
+    $('.ui.accordion').accordion();
+
+    $('.cookie.nag').nag({
+      storageMethod: 'localstorage',
+      key      : 'accepts-cookies',
+      value    : true
+    });    
+  });
+
+  $(window).on('resize', function () {
+    makeStepsVertical();
+  })
+
+  function makeStepsVertical() {
+    var longest_stepper = $('.ui.steps').get().reduce((val, next) => $(next).width() > val ? $(next).width() : val, 0);
+    var row_length = $('.ui.container .row').first().width();
+    if (longest_stepper + 20 > row_length) {
+      $('.ui.steps').addClass('vertical');
+    } 
+  }
+
+  function cookies_ok() {
+    $('.cookie.nag').nag('dismiss');
+  }
+
+  /** BLANACE TEXT **/
+
+  /**
+   * Any elements with 'balance-text" class will have text-wrap: balance polyfill applied.
+   */
+  rebalanceTexts = function() {
+    var elements = document.getElementsByClassName("balance-text");
+    _.each(elements, function(element) {
+      balanceText(element, {
+        watch: true
+      })
+    });
+  };
+
+</script>
+
+</html>

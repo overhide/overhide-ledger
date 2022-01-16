@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,italic,600,600italic,700,700italic,800,800italic,400|Roboto+Condensed:300,300italic,italic,700,700italic,400|Open+Sans+Condensed:300,300italic,700,400|PT+Sans+Narrow:700,400" rel="stylesheet" type="text/css">
+
+  <script src="lib/jquery-3.3.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.3.4/web3.min.js" integrity="sha512-TTGImODeszogiro9DUvleC9NJVnxO6M0+69nbM3YE9SYcVe4wZp2XYpELtcikuFZO9vjXNPyeoHAhS5DHzX1ZQ==" crossorigin="anonymous"></script>    
+  <script type="text/javascript" src="lib/ledgers.js"></script>
+
+  <script src="lib/underscore-min.js"></script>
+  <script src="lib/balancetext.min.js"></script>
+
+  <script src="lib/semantic/accordion.min.js"></script>
+  <script src="lib/semantic/checkbox.min.js"></script>
+  <script src="lib/semantic/nag.min.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="lib/semantic/accordion.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/button.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/checkbox.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/container.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/grid.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/icon.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/input.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/nag.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/reset.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/segment.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/site.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/semantic/step.min.css">
+
+  <link rel="stylesheet" type="text/css" href="lib/webpage.css">
+  <link rel="stylesheet" type="text/css" href="lib/webpage-anim.css">
+
+</head>
+
+<body>
+  <div class="branding">
+    <img class="logo appear-delayed" src="lib/logo.png" />
+  </div>
+  <div class="hero">
+    <div class="main-hero in-left">
+      overhide-ledger registration
+    </div>
+  </div>
+
+  <div class="ui vertical stripe segment full-height appear-delayed">
+    <div class="ui vertical section middle aligned stackable grid container">
+      <div class="row">
+        <div class="ui small unstackable space-top2x steps">
+          <div class="step">
+            <i class="check icon grey"></i>
+            <div class="content">
+              <div class="title">begin</div>
+            </div>
+          </div>
+          <div class="step">
+            <i class="check icon grey"></i>
+            <div class="content">
+              <div class="title">Stripe<br/>onboard</div>
+            </div>
+          </div>
+          <div class="active step">
+            <i class="hand point down icon black"></i>
+            <div class="content">
+              <div class="title">ledger<br/>registration</div>
+            </div>
+          </div>
+          <div class="step">
+            <i class="thumbs up icon grey"></i>
+            <div class="content">
+              <div class="title">complete</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ui vertical section middle aligned stackable grid container">
+      <div class="row">
+        <div class="eight wide column full-height">
+          <div class="no-wallet">
+            <p class="balance-text">generate or enter a valid secret key</p>
+
+            <p class="balance-text">it will be your <em>overhide-ledger</em> secret key</p>
+
+            <p class="balance-text">the secret will be used to produce a public address for sharing</p>
+
+            <p class="balance-text">your customers will pay you through this shared public address</p>
+
+            <p class="balance-text">payments will go into the Stripe account just onboarded</p>
+
+            <pre class="balance-text" style="margin-top:1.7em; margin-bottom:2em;">o   o   o</pre>
+
+            <p class="balance-text">this secret key is private, keep it to yourself, do not share</p>
+
+            <p class="balance-text">copy the secret key and store it off in your records</p>
+
+            <p class="balance-text">consider using a <em>web3.js</em> wallet such as <a href="https://metamask.io" target="_blank">Metamask</a> for key management &mdash; <em>overhide-ledger</em> uses Ethereum PKI</p>
+          </div>
+          <div class="has-wallet">
+            <p class="balance-text">your current <em>web3.js</em> wallet public address is shown</p>
+
+            <p class="balance-text">it will be your <em>overhide-ledger</em> public address</p>
+
+            <p class="balance-text">your customers will pay you through this shared public address</p>
+
+            <p class="balance-text">payments will go into the Stripe account just onboarded</p>
+          </div>
+        </div>
+        <div class="eight wide column full-height">
+          <div class="ui vertical section middle aligned stackable grid container">
+            <div class="row centered no-wallet">
+              <div class="ui input large" style="width: 95%">
+                <input id="secret" type="text" placeholder="0x5A0..9F3">
+              </div>
+              <p id="validation" class="balance-text" style="color:#ff8080;">generate or paste a valid secret</p>
+            </div>
+            <div class="row centered has-wallet">
+              <div class="ui input large" style="width: 95%">
+                <input id="address" type="text" disabled>
+              </div>
+              <p class="balance-text" style="color:#13a8bf;">address taken from your <em>web3.js</em> wallet</p>
+            </div>
+            <div class="row centered no-wallet">
+              <div class="eight wide column middle aligned full-height">
+                <button class="ui button-link basic button space-top large black" onclick="oh$.generateCredentials('ohledger')">generate</button>
+              </div>
+              <div class="eight wide column middle aligned full-height">
+                <button class="ui button-link basic button space-top large black" onclick="copyToClipboard($('#secret').val())">copy to clipboard</button>
+              </div>
+            </div>
+            <div class="row centered no-wallet ui space-top">
+              <div class="confirmations">
+                <div class="ui checkbox" id="confirmsave">
+                  <input type="checkbox">
+                  <label>I saved the secret for future reference</label>
+                </div>
+                <div class="ui checkbox" id="confirmprivate">
+                  <input type="checkbox">
+                  <label>I understand this secret is to be kept private</label>
+                </div>
+                <div class="ui checkbox" id="confirmread">
+                  <input type="checkbox">
+                  <label>I read this page</label>
+                </div>
+                <p id="confirmall" class="balance-text" style="color:#ff8080;">check off all of the above to proceed</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ui vertical section middle aligned stackable grid container">
+      <div class="row centered">
+        <div class="four wide column middle aligned full-height">
+          <button class="ui button-link basic button space-top orange large" onclick="window.close()">cancel</button>
+        </div>
+        <div class="four wide column middle aligned full-height">
+          <button id="register" class="ui button-link basic button space-top teal large" disabled onclick="register()">register</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ui inline cookie nag">
+    <span class="title">
+      We use cookies to ensure that we give you the best experience on our website. If you continue to use this site we will
+      assume that you are happy with this.
+      <br/>
+      <button class="ui button-nag basic green button space-top tiny" onclick="cookies_ok()">fine</button>
+      <a href="https://overhide.io/lib/tos.html" target="_blank"><button class="ui button-nag basic inverted button space-top tiny">privacy policy</button></a>
+    </span>
+    <i class="close icon" onclick="cookies_ok()"></i>
+  </div>
+
+  <div class="ui vertical footer segment">
+    <div class="ui container">
+      <div class="ui stackable equal height stackable grid">
+        <div class="two wide column"></div>
+        <div class="four wide column">
+          <h4 class="ui header">overhide.io FOSS</h4>
+          <div class="ui link list">
+            <div class="item">Reddit: <a href="https://www.reddit.com/r/overhide/" target="_blank">r/overhide</a></div>
+          </div>
+        </div>
+        <div class="four wide column">
+          <h4 class="ui header">Legal</h4>
+          <div class="ui link list">
+            <a href="https://overhide.io/lib/tos.html" target="_blank" class="item">Terms of Service</a>
+          </div>
+        </div>
+        <div class="four wide column">
+          <h4 class="ui header">
+            <a href="https://twitter.com/overhideio" target="_blank"><i class="twitter icon large"></i></a>
+            <a href="https://www.linkedin.com/company/overhide-inc" target="_blank"><i class="linkedin icon large"></i></a>
+            <a href="https://www.reddit.com/r/overhide/" target="_blank"><i class="reddit icon large"></i></a>
+          </h4>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+<script>
+  window.onload = function() {
+    rebalanceTexts();
+    makeStepsVertical();
+    handleUrl();
+    $('#validation').fadeTo(0,0);
+    validateSecret();
+    if (oh$.getImparterTags().find(rec => rec === 'ohledger-web3')) {
+      setAddressFromWallet();
+    } else {
+      $(".no-wallet").show();
+      $(".has-wallet").hide();      
+    }
+    $('.confirmations').hide();
+    $('.ui.checkbox').checkbox({onChange: checkConfirms});
+  }
+
+  /** URL PARSING **/
+
+  function handleUrl() {
+    if (/#onboarded/.test(document.location.hash)) {
+      const urlParams = new URLSearchParams(window.location.search);
+      let address = urlParams.get('address');
+      let state = btoa(JSON.stringify({ "goPath": "/reap", "stopPath": "/reap" }));
+      window.location = `/v1/provider?address=${address}&state=${state}`;
+    }
+  }
+
+  /** UX toggling **/
+
+  $(document).ready(function() {
+    $('.ui.accordion').accordion();
+
+    $('.cookie.nag').nag({
+      storageMethod: 'localstorage',
+      key      : 'accepts-cookies',
+      value    : true
+    });    
+  });
+
+  $(window).on('resize', function () {
+    makeStepsVertical();
+  })
+
+  function makeStepsVertical() {
+    var longest_stepper = $('.ui.steps').get().reduce((val, next) => $(next).width() > val ? $(next).width() : val, 0);
+    var row_length = $('.ui.container .row').first().width();
+    if (longest_stepper + 20 > row_length) {
+      $('.ui.steps').addClass('vertical');
+    } 
+  }
+
+  function cookies_ok() {
+    $('.cookie.nag').nag('dismiss');
+  }
+
+  $("#secret").on('change keyup input', function (e) {
+    validateSecret();
+  })
+
+  function validateSecret() {
+    let value = $("#secret").val();
+    $("#address").val('');
+    $("#register").prop('disabled', true);
+    $('.confirmations').hide();
+    if (! /0x[0-9a-hA-H]{64}/.test(value)) {
+      $("#validation").fadeTo(500,1);
+    } else {
+      oh$.setCredentials('ohledger',{secret:value});
+    }
+  }
+  
+  function checkConfirms() {
+    $("#register").prop('disabled', true);
+    $("#confirmall").fadeTo(500,1);
+    if ($('#confirmsave').checkbox('is checked')
+        && $('#confirmprivate').checkbox('is checked')
+        && $('#confirmread').checkbox('is checked')) {
+      $("#register").prop('disabled', false);
+      $("#confirmall").fadeTo(500,0);
+    }
+  }
+
+  function register() {
+    let address = $("#address").val();
+    let state = btoa(JSON.stringify({ "goPath": "/onboarded.html", "stopPath": "/onboarderror.html", "address": address }));
+    window.location = `/v1/provider?address=${address}&state=${state}`;
+  }
+
+  /** BLANACE TEXT **/
+
+  /**
+   * Any elements with 'balance-text" class will have text-wrap: balance polyfill applied.
+   */
+  rebalanceTexts = function() {
+    var elements = document.getElementsByClassName("balance-text");
+    _.each(elements, function(element) {
+      balanceText(element, {
+        watch: true
+      })
+    });
+  };
+
+  /** WALLET INTERACTIVITY **/
+
+  function setAddressFromWallet() {
+    $(".no-wallet").hide();
+    $(".has-wallet").show();
+    $("#register").prop('disabled',false);
+    $('.confirmations').hide();
+    $("#address").val(oh$.getCredentials('ohledger-web3').address);
+  }
+
+  oh$.addEventListener('onCredentialsUpdate', (e) => {
+    if (e.imparterTag === 'ohledger-web3') {
+      setAddressFromWallet();
+    }
+    if (e.imparterTag === 'ohledger') {
+      $("#secret").val(e.secret);
+      $("#address").val(e.address);
+      $("#validation").fadeTo(500,0);
+      $("#register").prop('disabled', true);
+      $('.confirmations').show();
+      $('.ui.checkbox').checkbox('uncheck');
+    }
+    return;
+  });
+
+  oh$.addEventListener('onWalletChange', (e) => {
+    if (e.imparterTag === 'ohledger-web3' && !e.isPresent) {
+      $(".no-wallet").show();
+      $(".has-wallet").hide();
+      $("#address").val('');
+      $("#register").prop('disabled', true);
+      $('.confirmations').hide();
+      validateSecret();
+    }
+  });
+
+  /** COPY **/
+
+  // @param {string} str - data key to copy
+  function copyToClipboard(str) {
+    if (!str) return;
+    const el = document.createElement('textarea');
+    el.value = str;
+    el.setAttribute('readonly', '');
+    el.style.position = 'absolute';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+  }
+
+</script>
+
+</html>
