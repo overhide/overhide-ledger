@@ -2,8 +2,8 @@
 
 const debug = require('./log.js').debug_fn("authTokenChallenge");
 const log = require('./log.js').fn("authTokenChallenge");
-const utils = require('./lib/utils.js');
-const crypto = require('./lib/crypto.js');
+const utils = require('./utils.js');
+const crypto = require('./crypto.js');
 
 // private attribtues
 const ctx = Symbol('context');
@@ -67,14 +67,20 @@ class AuthTokenChallengeChecker {
    async isValidTokenAuthZ(req, address) {
     this[checkInit]();
 
-    if (!address || typeof address !== 'string' || address.length != 42) {
-      const err = `invalid address, isValidTokenAuthZ can only be used with requests having an address parameter that is a hex encoded 42 character string starting with '0x' (${address})`;
-      debug('isValidTokenAuthZ DENIED :: %s', err);
-      return false;
-    }
-
     const signature = req.params['signature'];
     const message = req.header['Authorization'];
+
+    return this.checkSignature(address, signature, message.toString('base64'));
+   }
+
+  /**
+   * Validate the signature.
+   * @param {string} address - 0x.. prefixed address
+   * @param {string} signature - base64 encoded signature of the challenge from `getChallenge`
+   * @param {string} message - the challenge message: bearer token value
+   * @returns {boolean} response or calls next() to continue chain
+   */
+  async checkSignature(address, signature, message) {
 
     if (!signature) {
       this[metrics].noSignature++;
@@ -87,6 +93,7 @@ class AuthTokenChallengeChecker {
       if (!message || typeof message !== 'string') throw `invalid Authorization header (${message})`;
       address = address.toLowerCase();
       signature = Buffer.from(signature, "base64").toString("ascii");
+      message = Buffer.from(message, "base64").toString("ascii");
       if (address !== utils.recover(message, signature).toLowerCase()) {
         throw `signature doesn't match passed-in address (from-address:${address})`;
       }

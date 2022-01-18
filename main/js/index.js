@@ -570,6 +570,19 @@ app.get('/v1/provider', (req, rsp) => {
 });
 
 /**
+ * Get challenge to sign.
+ */
+app.get('/v1/challenge', throttle, (req, res) => {
+  try {
+    res.status(200).send(String(loopbackChallengeChecker.getChallenge()));
+  }
+  catch (err) {
+    debug('GET /v1/transact.js ERROR :: %s', err);
+    res.status(400).send(String(err));
+  }
+});
+
+/**
  * Endpoint used from UI ('GET /pay') and JS function ('GET /v1/transact.js') to shunt a payment.
  * 
  * Required parameters in body:
@@ -630,13 +643,11 @@ app.post('/v1/retarget-provider', (req, rsp) => {
       let accountId = body['accountId'];
       let address = body['address'];
       let signature = body['signature'];
+      let message = body['message'];
       if (!accountId || typeof accountId !== 'string') throw `invalid accountId (${accountId})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
-      try {
-        var recovered = utils.recover(`${address}${accountId}`.toLowerCase(), signature);
-      } catch (e) { }
-      if (recovered.toLowerCase() !== address) throw `invalid signature`;
+      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
       if (!await database.getError()) {
         let existingAccountId = await database.getAccountId(address);
         if (existingAccountId && existingAccountId.toLowerCase() !== accountId.toLowerCase()) {
@@ -681,13 +692,11 @@ app.post('/v1/retarget-subscriber', (req, rsp) => {
       let email = body['email'];
       let address = body['address'];
       let signature = body['signature'];
+      let message = body['message'];
       if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/g.test(email)) throw `invalid email (${email})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
-      try {
-        var recovered = utils.recover(`${address}${email}`.toLowerCase(), signature);
-      } catch (e) { }
-      if (recovered.toLowerCase() !== address) throw `invalid signature`;
+      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
       if (!await database.getError()) {
         let emailHash = crypto.hash(email, SALT);
         let checksOut = await database.isEmailInTxs(emailHash);
@@ -788,13 +797,16 @@ app.post('/v1/go-retarget', throttle, (req, rsp) => {
       let email = body['email'];
       let address = body['address'];
       let accountId = body['accountId'];
-      var id = body['id'];
+      let id = body['id'];
+      let signature = query['signature'];
+      let message = query['message'];
       if (!paymentGatewayToken || typeof paymentGatewayToken !== 'string') throw `invalid paymentGatewayToken (${paymentGatewayToken})`;
       if (!email || typeof email !== 'string') throw `invalid email (${email})`;
       if (accountId && typeof accountId !== 'string') throw `invalid accountId (${accountId})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       if (!id || typeof id !== 'string') throw `invalid id (${id})`;
       address = address.toLowerCase();
+      if (!loopbackChallengeChecker.checkSignature(address, signature, message)) throw `invalid signature`;      
       const emailHash = crypto.hash(email, SALT);
       id = id.toLowerCase();
       await retarget.retargetFinalized(id);
@@ -832,7 +844,15 @@ app.get('/v1/ledger.html', throttle, (req, res) => {
       let address = query['address'];
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
-      let includePrivate = false;
+      
+      let signature = query['signature'];
+      let message = query['message'];
+      let tsignature = query['t-signature'];
+      let tchallenge = query['t-challenge'];       
+      let includePrivate = 
+        (!!signature && !!message && loopbackChallengeChecker.checkSignature(address, signature, message)) 
+        || (!!tsignature && !!tchallenge && authTokenChallengeChecker.checkSignature(address, tsignature, tchallenge));
+
       if (!await database.getError()) {
         txs = await database.getLatestTransactionsByAddress(address, includePrivate);
         num_all_txs = await database.getNumTransactionsByAddress(address, includePrivate);
@@ -869,14 +889,12 @@ app.get('/v1/void.html', throttle, (req, res) => {
       let providerAddress = query['providerAddress'];
       let subscriberAddress = query['subscriberAddress'];
       let signature = query['signature'];
+      let message = query['message'];
       if (!providerAddress || typeof providerAddress !== 'string' || providerAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${providerAddress})`;
       if (!subscriberAddress || typeof subscriberAddress !== 'string' || subscriberAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${subscriberAddress})`;
       providerAddress = providerAddress.toLowerCase();
       subscriberAddress = subscriberAddress.toLowerCase();
-      try {
-        var recovered = utils.recover(`${providerAddress}${subscriberAddress}`.toLowerCase(), signature);
-      } catch (e) { }
-      if (recovered.toLowerCase() !== providerAddress) throw `invalid signature`;
+      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
       if (!await database.getError()) {
         txs = await database.getLatestTransactionsFromTo(subscriberAddress, providerAddress);
         if (txs.length == 0) throw `No transactions from ${subscriberAddress} to ${providerAddress}`;
@@ -1373,6 +1391,7 @@ async function onHealthCheck() {
   const dbError = await database.getError();
   const tallyCacheMetrics = tallyCache.metrics();
   const authTokenChallengeMetrics = authTokenChallengeChecker.metrics();
+  const loopbackChallengeMetrics = loopbackChallengeChecker.metrics();
   const healthy = !dbError && tallyCacheMetrics.errorsDelta === 0;
   if (!healthy) {
     const reason = `dbError: ${dbError}, tallyCacheErrors: ${tallyCacheMetrics.errorsDelta}`;
@@ -1387,7 +1406,8 @@ async function onHealthCheck() {
     smtp: smtp.metrics(),
     paymentGateway: paymentGateway.metrics(),
     tallyCacheMetrics: tallyCacheMetrics,
-    authTokenChallengeMetrics: authTokenChallengeMetrics
+    authTokenChallengeMetrics: authTokenChallengeMetrics,
+    loopbackChallengeMetrics: loopbackChallengeMetrics
   };
   return status;
 }

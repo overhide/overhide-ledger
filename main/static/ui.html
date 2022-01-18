@@ -651,7 +651,7 @@
    * 
    * @param {string} address - '0x' pre-pended address to sign for
    * @param {string} message - some text message to sign
-   * @param {string} secrete - optional secret for address:  if wallet is signing, we don't have it.
+   * @param {string} secret - optional secret for address:  if wallet is signing, we don't have it.
    * @returns {string} signature
    */
   async function sign(address, message, secret) {
@@ -673,6 +673,18 @@
    */
   function recover(message, signature) {
     return web3.eth.accounts.recover(message, signature);
+  }
+
+  /**
+   * Get a signed challenge, challenge being from server. 
+   * @param {string} address - '0x' pre-pended address to sign for
+   * @param {string} secret - optional secret for address:  if wallet is signing, we don't have it.
+   * @returns {string[]} challenge, base64(signature)
+   */
+  async function signChallenge(address, secret) {
+    const challenge = await fetch('/v1/challenge').then(res => res.text());    
+    const signature = sign(address, challenge, secret);
+    return [challenge, btoa(signature)];
   }
 
   /** RESCALE & CENTER ALL content-box DIVs **/
@@ -1080,8 +1092,7 @@ function loadSVGs() {
       if (is3CP0()) return;
       let address = data['walletAddress'] || data['subscriberAddress'];
       let secret = data['subscriberSecret'];
-      let message = (new Date()).toISOString();
-      let signature = await sign(address, message, secret);
+      let [message, signature] = await signChallenge(address, secret);
       $('#gratis-content').attr('src', `/v1/gratis.html?address=${address}&signature=${signature}&message=${message}`);
       $('#gratis-modal').modal('show');
     })();
@@ -1091,8 +1102,11 @@ function loadSVGs() {
   function showLedgerPage() {
     if (is3CP0()) return;
     let address = data['walletAddress'] || data['subscriberAddress'];
-    $('#ledger-content').attr('src', `/v1/ledger.html?address=${address}`);
-    $('#ledger-modal').modal('show');
+    let secret = data['subscriberSecret'];
+    signChallenge(address, secret).then(([message, signature]) => {
+      $('#ledger-content').attr('src', `/v1/ledger.html?address=${address}&message=${message}&signature=${signature}`);
+      $('#ledger-modal').modal('show');
+    });
   }
 
   // shows ledger page in modal
@@ -1100,9 +1114,9 @@ function loadSVGs() {
     (async () => {
       if (is3CP0()) return;
       let address = data['walletAddress'] || data['providerAddress'];
-      let fromAddress = data['fromAddress'];
-      let signature = await sign(address, `${address}${fromAddress}`.toLowerCase(), data['providerSecret']);
-      $('#void-content').attr('src', `/v1/void.html?providerAddress=${address}&subscriberAddress=${fromAddress}&signature=${signature}`);
+      let secret = data['providerSecret'];
+      let [message, signature] = await signChallenge(address, secret);
+      $('#void-content').attr('src', `/v1/void.html?providerAddress=${address}&subscriberAddress=${fromAddress}&signature=${signature}&message=${message}`);
       $('#void-modal').modal('show');
     })();
   }
@@ -1202,7 +1216,8 @@ function loadSVGs() {
       let accountId = data['accountId'];
       let address = data['walletAddress'] || data['providerAddress'];
       try {
-        var signature = await sign(address, `${address}${accountId}`.toLowerCase(), data['providerSecret']);
+        let secret = data['providerSecret'];
+        var [message, signature] = await signChallenge(address, secret);
       } catch (err) {
         $('#retarget-provider-ok').removeClass('loading');
         throw err;
@@ -1213,7 +1228,8 @@ function loadSVGs() {
         body: JSON.stringify({
           accountId: accountId,
           address: address,
-          signature: signature
+          signature: signature,
+          message: message
         })
       })
       .then((result) => {
@@ -1236,7 +1252,8 @@ function loadSVGs() {
       let email = data['emailOnPayment'];
       let address = data['walletAddress'] || data['subscriberAddress'];
       try {
-        var signature = await sign(address, `${address}${email}`.toLowerCase(), data['subscriberSecret']);
+        let secret = data['subscriberSecret'];
+        var [message, signature] = await signChallenge(address, secret);
       } catch (err) {
         $('#retarget-subscriber-ok').removeClass('loading');
         throw err;
@@ -1247,7 +1264,8 @@ function loadSVGs() {
         body: JSON.stringify({
           email: email,
           address: address,
-          signature: signature
+          signature: signature,
+          message: message
         })
       })
       .then((result) => {

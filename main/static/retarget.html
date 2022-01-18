@@ -187,6 +187,19 @@ function recover(message, signature) {
   return web3.eth.accounts.recover(message, signature);
 }
 
+/**
+ * Get a signed challenge, challenge being from server. 
+ * @param {string} address - '0x' pre-pended address to sign for
+ * @param {string} secret - optional secret for address:  if wallet is signing, we don't have it.
+ * @returns {string[]} challenge, base64(signature)
+ */
+async function signChallenge(address, secret) {
+  const challenge = await fetch('/v1/challenge').then(res => res.text());    
+  const signature = sign(address, challenge, secret);
+  return [challenge, btoa(signature)];
+}
+
+
 function detectIfRetargetingProvider() {
   let accountId = '<%-accountId%>';
   if (accountId) {
@@ -275,31 +288,41 @@ var handler = StripeCheckout.configure({
     image: 'https://stripe.com/img/documentation/checkout/marketplace.png',
     locale: 'auto',
     token: function (token) {
-      fetch(`/v1/go-retarget`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify({
-          paymentGatewayToken: token.id,
-          id: '<%-id%>',
-          email: '<%-email%>',
-          address: '<%-address%>',
-          accountId: '<%-accountId%>'
+      signChallenge('<%-address%>', $('#secret-input').val())
+      .then((message, signature) => {
+        fetch(`/v1/go-retarget`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            paymentGatewayToken: token.id,
+            id: '<%-id%>',
+            email: '<%-email%>',
+            address: '<%-address%>',
+            accountId: '<%-accountId%>',
+            message: message,
+            signature: signature
+          })
         })
-      })
-      .then((result) => {
-        if (result.status == 200) {
-          $('#status').show();
-          $('#status').css('color','green');
-          $('#status').html('OK, success, payment processed.');
-          $('#ok-button').addClass('disabled');
-          done = true;
-        } else {
-          result.text().then(txt => {
+        .then((result) => {
+          if (result.status == 200) {
             $('#status').show();
-            $('#status').css('color','red');
-            $('#status').html('Error re-targeting: ' + txt);
-          });
-        }
+            $('#status').css('color','green');
+            $('#status').html('OK, success, payment processed.');
+            $('#ok-button').addClass('disabled');
+            done = true;
+          } else {
+            result.text().then(txt => {
+              $('#status').show();
+              $('#status').css('color','red');
+              $('#status').html('Error re-targeting: ' + txt);
+            });
+          }
+        })
+        .catch(e => {
+          $('#status').show();
+          $('#status').css('color','red');
+          $('#status').html('Error re-targeting: ' + String(e));
+        });
       })
       .catch(e => {
         $('#status').show();

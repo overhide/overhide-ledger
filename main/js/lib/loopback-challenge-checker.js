@@ -2,8 +2,8 @@
 
 const debug = require('./log.js').debug_fn("loopbackChallenge");
 const log = require('./log.js').fn("loopbackChallenge");
-const utils = require('./lib/utils.js');
-const crypto = require('./lib/crypto.js');
+const utils = require('./utils.js');
+const crypto = require('./crypto.js');
 
 // private attribtues
 const ctx = Symbol('context');
@@ -11,6 +11,7 @@ const metrics = Symbol('metrics');
 
 // private functions
 const checkInit = Symbol('checkInit');
+const checkChallenge = Symbol('checkChallenge');
 
 /**
  * Wires up functionality we use throughout.
@@ -49,8 +50,8 @@ class LoopbackChallengeChecker {
       errors: 0,
       errorsLastCheck: 0,
       errorsDelta: 0,
-      validTokens: 0,
-      invalidTokens: 0,
+      validChallenges: 0,
+      invalidChallenges: 0,
       noSignature: 0
     };   
     
@@ -61,67 +62,63 @@ class LoopbackChallengeChecker {
    * Get a challenge phrase.
    * @returns {string} challenge phrase
    */
-  async getChallenge() {
-
+  getChallenge() {
+    return crypto.symmetricEncrypt((new Date()).toISOString(), this[ctx].salt).toString('base64');
   }
 
   /**
-   * middleware to check passed in signature query parameter if signing a loopback challenge previously requested.
-   * @param {}  req
-   * @param {} res
-   * @param {} next
-   * @returns {} response or calls next() to continue chain
+   * @param {string} challenge - the challenge from `getChallenge`
+   * @returns {boolean} whether challenge is a valid challenge
    */
-   async checkSignature(req, res, next) {
+  [checkChallenge](challenge) {
+    try {
+      const decoded = new Buffer(challenge, 'base64');
+      const decrypted = crypto.symmetricDecrypt(decoded, this[ctx].salt);
+      const now = (new Date()).getTime();
+      const timestamp = (new Date(decrypted)).getTime();
+      if (!timestamp) return false;
+      const diffMinutes = ((now - timestamp) / 1000) / 60;
+      if (diffMinutes <= 5) return true;
+    } catch (err) {
+      debug('checkChallenge DENIED :: challenge:%s', challenge);
+      return false;
+    }
+  }
+
+  /**
+   * Validate the signature.
+   * @param {string} address - 0x.. prefixed address
+   * @param {string} signature - base64 encoded signature of the challenge from `getChallenge`
+   * @param {string} message - the challenge message from `getChallenge`
+   * @returns {boolean} response or calls next() to continue chain
+   */
+   checkSignature(address, signature, message) {
     this[checkInit]();
-
-    const address = req.params['fromAddress'];
-    if (!address || typeof address !== 'string' || address.length != 42) {
-      const err = `invalid address, checkTokenAuthZ can only be used with requests having fromAddress parameter that is a hex encoded 42 character string starting with '0x' (${address})`;
-      debug('checkTokenAuthZ DENIED :: %s', err);
-      rsp.status(400).send(String(err));
-      return;
-    }
-
-    const signature = req.params['signature'];
-    const message = req.header['Authorization'];
-
-    if (!signature) {
-      this[metrics].noSignature++;
-
-      if (this[ctx].isLedgerPrivate) {
-        res.status(401).send('No `signature` query parameter when using v2 API against a private ledger.');
-        return;
-      } else {
-        next();
-        return;  
-      }
-    }
 
     try {
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       if (!signature || typeof signature !== 'string' || ! /^[A-Za-z0-9+/=]*$/g.test(signature)) throw `invalid signature, must be base64 encoded string (${signature})`;
-      if (!message || typeof message !== 'string') throw `invalid Authorization header (${message})`;
+      if (!message || typeof message !== 'string') throw `invalid challenge message (${message})`;
+
       address = address.toLowerCase();
       signature = Buffer.from(signature, "base64").toString("ascii");
+
       if (address !== utils.recover(message, signature).toLowerCase()) {
-        throw `signature doesn't match passed-in address (from-address:${address})`;
+        throw `signature doesn't match passed-in address (address:${address})`;
       }
-      this[metrics].validTokens++;
-      next();
-      return;
+
+      if (!this[checkChallenge](message)) {
+        throw `challenge message didn't pass validation`;
+      }
+
+      this[metrics].validChallenges++;
+      return true;
     } catch (err) {
       debug('checkTokenAuthZ DENIED :: %s', err);
     }      
 
-    this[metrics].invalidTokens++;
-    if (this[ctx].isLedgerPrivate) {
-      res.status(401).send('Authorization header has invalid token when using v2 API against a private ledger.');
-      return;
-    } else {
-      next();
-      return;  
-    }
+    this[metrics].invalidChallenges++;
+    return false;  
 }
 
   /**
