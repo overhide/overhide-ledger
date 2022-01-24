@@ -573,13 +573,15 @@ app.get('/v1/provider', (req, rsp) => {
  * Get challenge to sign.
  */
 app.get('/v1/challenge', throttle, (req, res) => {
-  try {
-    res.status(200).send(String(loopbackChallengeChecker.getChallenge()));
-  }
-  catch (err) {
-    debug('GET /v1/transact.js ERROR :: %s', err);
-    res.status(400).send(String(err));
-  }
+  (async () => {
+    try {
+      res.status(200).send(String(loopbackChallengeChecker.getChallenge()));
+    }
+    catch (err) {
+      debug('GET /v1/transact.js ERROR :: %s', err);
+      res.status(400).send(String(err));
+    }  
+  })();
 });
 
 /**
@@ -647,7 +649,7 @@ app.post('/v1/retarget-provider', (req, rsp) => {
       if (!accountId || typeof accountId !== 'string') throw `invalid accountId (${accountId})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
-      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
+      if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;
       if (!await database.getError()) {
         let existingAccountId = await database.getAccountId(address);
         if (existingAccountId && existingAccountId.toLowerCase() !== accountId.toLowerCase()) {
@@ -696,7 +698,7 @@ app.post('/v1/retarget-subscriber', (req, rsp) => {
       if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/g.test(email)) throw `invalid email (${email})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
-      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
+      if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;
       if (!await database.getError()) {
         let emailHash = crypto.hash(email, SALT);
         let checksOut = await database.isEmailInTxs(emailHash);
@@ -798,15 +800,15 @@ app.post('/v1/go-retarget', throttle, (req, rsp) => {
       let address = body['address'];
       let accountId = body['accountId'];
       let id = body['id'];
-      let signature = query['signature'];
-      let message = query['message'];
+      let signature = body['signature'];
+      let message = body['message'];
       if (!paymentGatewayToken || typeof paymentGatewayToken !== 'string') throw `invalid paymentGatewayToken (${paymentGatewayToken})`;
       if (!email || typeof email !== 'string') throw `invalid email (${email})`;
       if (accountId && typeof accountId !== 'string') throw `invalid accountId (${accountId})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       if (!id || typeof id !== 'string') throw `invalid id (${id})`;
       address = address.toLowerCase();
-      if (!loopbackChallengeChecker.checkSignature(address, signature, message)) throw `invalid signature`;      
+      if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;      
       const emailHash = crypto.hash(email, SALT);
       id = id.toLowerCase();
       await retarget.retargetFinalized(id);
@@ -850,7 +852,7 @@ app.get('/v1/ledger.html', throttle, (req, res) => {
       let tsignature = query['t-signature'];
       let tchallenge = query['t-challenge'];       
       let includePrivate = 
-        (!!signature && !!message && loopbackChallengeChecker.checkSignature(address, signature, message)) 
+        (!!signature && !!message && (await loopbackChallengeChecker.checkSignature(address, signature, message))) 
         || (!!tsignature && !!tchallenge && authTokenChallengeChecker.checkSignature(address, tsignature, tchallenge));
 
       if (!await database.getError()) {
@@ -894,7 +896,7 @@ app.get('/v1/void.html', throttle, (req, res) => {
       if (!subscriberAddress || typeof subscriberAddress !== 'string' || subscriberAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${subscriberAddress})`;
       providerAddress = providerAddress.toLowerCase();
       subscriberAddress = subscriberAddress.toLowerCase();
-      if (!loopbackChallengeChecker.checkSignature(providerAddress, signature, message)) throw `invalid signature`;
+      if (!(await loopbackChallengeChecker.checkSignature(providerAddress, signature, message))) throw `invalid signature`;
       if (!await database.getError()) {
         txs = await database.getLatestTransactionsFromTo(subscriberAddress, providerAddress);
         if (txs.length == 0) throw `No transactions from ${subscriberAddress} to ${providerAddress}`;
@@ -905,6 +907,7 @@ app.get('/v1/void.html', throttle, (req, res) => {
         fromAddress: subscriberAddress,
         toAddress: providerAddress,
         signature: signature,
+        message: message,
         currency: OUR_PROCESSING_CURRENCY,
         txs: JSON.stringify(txs),
         num_txs: txs.length,
@@ -918,6 +921,7 @@ app.get('/v1/void.html', throttle, (req, res) => {
         fromAddress: '',
         toAddress: '',
         signature: '',
+        message: '',
         currency: '',
         txs: '',
         num_txs: '',
@@ -934,6 +938,7 @@ app.get('/v1/void.html', throttle, (req, res) => {
  *   - providerAddress
  *   - subscriberAddress
  *   - signature
+ *   - message
  */
 app.post('/v1/go-void', throttle, (req, rsp) => {
   (async () => {
@@ -943,14 +948,12 @@ app.post('/v1/go-void', throttle, (req, rsp) => {
       let providerAddress = body['providerAddress'];
       let subscriberAddress = body['subscriberAddress'];
       let signature = body['signature'];
+      let message = body['message'];
       if (!providerAddress || typeof providerAddress !== 'string' || providerAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${providerAddress})`;
       if (!subscriberAddress || typeof subscriberAddress !== 'string' || subscriberAddress.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${subscriberAddress})`;
       providerAddress = providerAddress.toLowerCase();
       subscriberAddress = subscriberAddress.toLowerCase();
-      try {
-        var recovered = utils.recover(`${providerAddress}${subscriberAddress}`.toLowerCase(), signature);
-      } catch (e) { }
-      if (recovered.toLowerCase() !== providerAddress) throw `invalid signature`;
+      if (!(await loopbackChallengeChecker.checkSignature(providerAddress, signature, message))) throw `invalid signature`;
       if (!await database.getError()) {
         await database.voidFromTo(subscriberAddress, providerAddress);
       }
@@ -1354,8 +1357,8 @@ app.post('/v1/is-signature-valid',
         if (!signature || typeof signature !== 'string' || ! /^[A-Za-z0-9+/=]*$/g.test(signature)) throw `invalid signature, must be base64 encoded string (${signature})`;
         if (!message || typeof message !== 'string' || ! /^[A-Za-z0-9+/=]*$/g.test(message)) throw `invalid message, must be base64 encoded string (${message})`;
         address = address.toLowerCase();
-        signature = Buffer.from(signature, "base64").toString("ascii");
-        message = Buffer.from(message, "base64").toString("ascii");
+        signature = utils.atob(signature);
+        message = utils.atob(message);
         if (address !== utils.recover(message, signature).toLowerCase()) {
           throw `invalid signature`;
         }

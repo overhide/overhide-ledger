@@ -683,7 +683,7 @@
    */
   async function signChallenge(address, secret) {
     const challenge = await fetch('/v1/challenge').then(res => res.text());    
-    const signature = sign(address, challenge, secret);
+    const signature = await sign(address, challenge, secret);
     return [challenge, btoa(signature)];
   }
 
@@ -1116,7 +1116,8 @@ function loadSVGs() {
       let address = data['walletAddress'] || data['providerAddress'];
       let secret = data['providerSecret'];
       let [message, signature] = await signChallenge(address, secret);
-      $('#void-content').attr('src', `/v1/void.html?providerAddress=${address}&subscriberAddress=${fromAddress}&signature=${signature}&message=${message}`);
+      console.log(`JTN:: ${message} ${signature}`);
+      $('#void-content').attr('src', `/v1/void.html?providerAddress=${address}&subscriberAddress=${data['fromAddress']}&signature=${signature}&message=${message}`);
       $('#void-modal').modal('show');
     })();
   }
@@ -1182,7 +1183,8 @@ function loadSVGs() {
             paymentGatewayToken: token.id,
             providerAddress: data['targetAddress'],
             subscriberAddress: data['walletAddress'] || data['subscriberAddress'],
-            amountCents: Math.floor(data['amount'] * 100)
+            amountCents: Math.floor(data['amount'] * 100),
+            isPrivate: true
           })
         })
           .then((result) => {

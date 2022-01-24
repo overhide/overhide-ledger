@@ -70,6 +70,13 @@ Make sure to set the configuration points in your *.npmrc* appropriately.
 
 Now you're ready to run database evolutions on the new database.
 
+> If you see `Error: Unknown authenticationOk message typeMessage { name: 'authenticationOk', length: 23 }` ensure to have md5 encrypted password for `adam/c0c0nut`:
+>
+> ```
+> alter role adam with password 'c0c0nut';
+> SELECT rolname, rolpassword FROM "pg_authid";  // ensure password starts with md5 not SCRAM-SHA-256
+> ```
+
 # Database Evolutions
 
 There is a single Node file to check for and perform database evolutions.

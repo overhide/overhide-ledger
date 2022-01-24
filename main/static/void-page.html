@@ -136,7 +136,8 @@ function ok() {
     body: JSON.stringify({
       providerAddress: '<%-toAddress%>',
       subscriberAddress: '<%-fromAddress%>',
-      signature: '<%-signature%>'
+      signature: '<%-signature%>',
+      message: '<%-message%>',      
     })
   })
   .then((result) => {

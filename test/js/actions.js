@@ -32,12 +32,23 @@ const keyv = new Keyv({
 
 const KEYV_KEY_FOR_LATEST_ID = 'LATEST_ID';
 
+const TEST_PROVIDER_ADDRESS = '0x046c88317b23dc57F6945Bf4140140f73c8FC80F';
+const TEST_SOME_ADDRESS = '0xd6106c445a07a6a1caf02fc8050f1fde30d7ce8b';
 const TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL = 'acct_1DymWuHnm2jVFR4M';  // account for 'jakub.at.work@gmail.com';
 
 const TEST_EMAIL = 'tester@overhide.io';
 const TEST_CARD = '4242424242424242';
 const TEST_EXPIRY = '0225';
 const TEST_CVC = '111';
+
+async function ensureProvider() {
+  log('--------------------------- ADD PROVIDER W/SUB --------------------------------------');
+  log('provider address: ' + TEST_PROVIDER_ADDRESS + ' <=> ' + TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL);
+  try { await database.addProvider(TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL, TEST_PROVIDER_ADDRESS); } catch (e) { log(e); }
+  log('add tx: ' + TEST_SOME_ADDRESS + ' => ' + TEST_PROVIDER_ADDRESS);
+  try { await database.addTransaction(TEST_SOME_ADDRESS, TEST_PROVIDER_ADDRESS, 300, 'foo', '00', false); } catch (e) { log(e); }
+  log('-------------------------------------------------------------------------------------');
+}
 
 // switch panes
 async function switchToGetPaid(page) {
@@ -368,6 +379,7 @@ async function voidEntry(page, provider_address, provider_secret, subscriber_add
 }
 
 module.exports = {
+  ensureProvider: ensureProvider,
   switchToPay: switchToPay,
   switchToGetPaid: switchToGetPaid,
   voidEntry: voidEntry,

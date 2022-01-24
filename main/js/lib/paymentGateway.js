@@ -172,7 +172,7 @@ class PaymentGateway {
     this[ctx].metrics.getEmailAttempt++;
     try {
       debug(`getting email address from Stripe (${accountId})`);
-      let result = await this[ctx].api.accounts.retrieve(accountId);
+      let result = await this[ctx].api.accounts.retrieve(accountId, { expand: ['business_profile']});
       this[ctx].metrics.getEmailSuccess++;
       debug(`getting email address from Stripe (${accountId}) <= ${result.email}`);
       return result.email;

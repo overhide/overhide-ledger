@@ -7,7 +7,7 @@ const puppeteer  = require('puppeteer');
 const URI = process.env.URI || process.env.npm_config_URI || process.env.npm_package_config_URI || 'http://localhost:54322';
 
 const { log, waitForClick } = require('./utils.js');
-const { switchToGetPaid, switchToPay, voidEntry, generateProvider, generateSubscriber, fillInSubscriber, makePayment, checkPayment, checkNoPayment, retargetProvider, retargetSubscriber } = require('./actions.js');
+const { ensureProvider, switchToGetPaid, switchToPay, voidEntry, generateProvider, generateSubscriber, fillInSubscriber, makePayment, checkPayment, checkNoPayment, retargetProvider, retargetSubscriber } = require('./actions.js');
 
 describe('smoke tests', function () {
   this.timeout('120s');
@@ -32,6 +32,8 @@ describe('smoke tests', function () {
 
   it('smoke test', (done) => {
     (async () => {
+      await ensureProvider();
+      
       const browser = await puppeteer.launch({headless: false});
       const page = await browser.newPage();
       await page.setViewport({ width: 960, height: 540 });

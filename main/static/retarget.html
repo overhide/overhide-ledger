@@ -195,7 +195,7 @@ function recover(message, signature) {
  */
 async function signChallenge(address, secret) {
   const challenge = await fetch('/v1/challenge').then(res => res.text());    
-  const signature = sign(address, challenge, secret);
+  const signature = await sign(address, challenge, secret);
   return [challenge, btoa(signature)];
 }
 
@@ -289,7 +289,7 @@ var handler = StripeCheckout.configure({
     locale: 'auto',
     token: function (token) {
       signChallenge('<%-address%>', $('#secret-input').val())
-      .then((message, signature) => {
+      .then(([message, signature]) => {
         fetch(`/v1/go-retarget`, {
           method: "POST",
           headers: { "Content-Type": "application/json; charset=utf-8" },

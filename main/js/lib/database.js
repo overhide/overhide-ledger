@@ -139,7 +139,7 @@ class Database {
   async addTransaction(subscriberAddress, providerAddress, amount, transferId, emailHash, isPrivate) {
     this[checkInit]();
     try {
-      let query = `INSERT INTO transactions (fromaddress, toaddress, transactionts, amountusdcents, transferid, emailhash, private) VALUES (decode($1,'hex'),decode($2,'hex'),$3,$4,$5,decode($6,'hex')),$7`;
+      let query = `INSERT INTO transactions (fromaddress, toaddress, transactionts, amountusdcents, transferid, emailhash, private) VALUES (decode($1,'hex'),decode($2,'hex'),$3,$4,$5,decode($6,'hex'),$7)`;
       let params = [subscriberAddress.slice(2), providerAddress.slice(2), new Date(), amount, transferId, emailHash, isPrivate];
       debug('%s,%o', query, params);
       await this[ctx].db.query(query,params);

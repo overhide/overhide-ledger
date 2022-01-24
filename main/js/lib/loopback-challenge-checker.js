@@ -63,7 +63,9 @@ class LoopbackChallengeChecker {
    * @returns {string} challenge phrase
    */
   getChallenge() {
-    return crypto.symmetricEncrypt((new Date()).toISOString(), this[ctx].salt).toString('base64');
+    const encrypted = crypto.symmetricEncrypt((new Date()).toISOString(), this[ctx].salt);
+    const encoded = utils.btoa(encrypted);
+    return encoded;
   }
 
   /**
@@ -92,7 +94,7 @@ class LoopbackChallengeChecker {
    * @param {string} message - the challenge message from `getChallenge`
    * @returns {boolean} response or calls next() to continue chain
    */
-   checkSignature(address, signature, message) {
+  async checkSignature(address, signature, message) {
     this[checkInit]();
 
     try {
@@ -101,13 +103,16 @@ class LoopbackChallengeChecker {
       if (!message || typeof message !== 'string') throw `invalid challenge message (${message})`;
 
       address = address.toLowerCase();
-      signature = Buffer.from(signature, "base64").toString("ascii");
+      signature = utils.atob(signature);
+      message = message.replace(/ /g, '+');
+      debug(`JTN:: ${address} ${message}`);
 
-      if (address !== utils.recover(message, signature).toLowerCase()) {
-        throw `signature doesn't match passed-in address (address:${address})`;
+      const targetAddress = (await utils.recover(message, signature)).toLowerCase();
+      if (address.toLowerCase() !== targetAddress) {
+        throw `signature doesn't match passed-in address (address:${address.toLowerCase()})(targetAddress:${targetAddress})`;
       }
 
-      if (!this[checkChallenge](message)) {
+      if (!(this[checkChallenge](message))) {
         throw `challenge message didn't pass validation`;
       }
 

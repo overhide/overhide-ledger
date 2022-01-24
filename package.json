@@ -5,7 +5,7 @@
   },
   "name": "overhide-ledger",
   "version": "1.0.0",
-  "description": "Orchestrate payments between payers and payees known only to this service--not to eachother--but exposing said payments in this centralized public ledger as payments between verifiable pseudonymous parties.",
+  "description": "Orchestrate payments between payers and payees known only to this service--not to eachother--but furnishing said payments in this centralized ledger as payments between verifiable pseudonymous parties.",
   "main": "main/js/index.js",
   "repository": {
     "type": "git",
@@ -35,14 +35,14 @@
     "express-rate-limit": "3.3.2",
     "js-yaml": "3.13.1",
     "keyv": "3.1.0",
-    "ledgers.js": "4.0.0",
-    "license-compatibility-checker": "0.3.3",
+    "ledgers.js": "4.6.1",
+    "license-compatibility-checker": "^0.3.5",
     "node-fetch": "2.3.0",
     "nodemailer": "5.0.0",
-    "pg": "7.7.1",
-    "rate-limit-redis": "2.1.0",
+    "pg": "8.7.1",
     "qs": "6.6.0",
-    "stripe": "6.20.0",
+    "rate-limit-redis": "2.1.0",
+    "stripe": "8.199.0",
     "swagger-jsdoc": "^3.2.9",
     "uuid": "3.3.2",
     "web3": "^1.0.0-beta.55"
@@ -95,7 +95,7 @@
   "devDependencies": {
     "chai": "4.2.0",
     "chai-http": "4.2.0",
-    "copyfiles": "2.1.0",
+    "copyfiles": "^2.4.1",
     "mocha": "5.2.0",
     "nodemon": "1.18.10",
     "puppeteer": "^1.15.0"
