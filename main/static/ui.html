@@ -315,6 +315,19 @@
             <div class="tooltiptext inverted">Copy to clipboard.</div>
           </i>
         </div>
+        <br/>
+        <p>
+          If you wish, please provide an email address for future address re-targets: ledger re-writes.
+        </p>
+        <p>
+          Note that <em>overhide-ledger</em> doesn't store your email address. It stores a hash of the email address. 
+          To perform re-targeting <em>overhide-ledger</em> will email this address.  Somewhat akin to the usual
+          "forgot password" flow on many sites.
+        </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">provider email</div>
+          <input type="text" bind="providedEmail" placeholder="fred@acme.com">
+        </div>
         <h3>
           Please remember to copy both of these credentials. Think of them as your username (address) and password
           (signing key).
@@ -377,13 +390,17 @@
     <div class="scrolling content">
       <div class="ui basic center aligned segment">
         <p>
-          Re-targeting of transactions means finding all ledger payments made to the provider account ID below, voiding
-          them,
-          and adding revision entries with a new ledger address.
+          Re-targeting of transactions means finding all ledger payments made to the provider email &amp; account ID below, voiding
+          them, and adding revision entries with a new ledger address.
         </p>
         <p>
-          Note that <em>overhide-ledger</em> interrogates Stripe for your email address to confirm this operation.
+          Please provide the email address you registered your original address with.  <em>Overhide-ledger</em> matches this email with 
+          Stripe or the ledger, and emails it to continue re-targeting.
         </p>
+        <div class="ui row fluid labeled icon input">
+          <div class="ui label">provider email</div>
+          <input type="text" bind="providedEmail" placeholder="fred@acme.com">
+        </div>        
         <div class="ui row fluid labeled icon input">
           <div class="ui label">Stripe Account ID</div>
           <input type="text" bind="accountId" placeholder="acct_1D0000000000VA">
@@ -459,7 +476,7 @@
         </p>
         <div class="ui row fluid labeled icon input">
           <div class="ui label">email on payment</div>
-          <input type="text" bind="emailOnPayment" placeholder="fred@acme.com">
+          <input type="text" bind="providedEmail" placeholder="fred@acme.com">
         </div>
         <p class="row no-wallet">
           Your new address and signing key are repeated below. If you wish to change them please exit out of this modal
@@ -736,7 +753,8 @@
     if (/#onboarded/.test(document.location.hash)) {
       const urlParams = new URLSearchParams(window.location.search);
       let address = urlParams.get('address');
-      let state = btoa(JSON.stringify({"goPath":"/reap","stopPath":"/reap"}));
+      let email = urlParams.get('email');
+      let state = btoa(JSON.stringify({"goPath":"/reap","stopPath":"/reap","email":email}));
       window.location = `/v1/provider?address=${address}&state=${state}`;
     }
   }
@@ -938,7 +956,8 @@ function loadSVGs() {
     let fromAddress = data['fromAddress'];
     let secret = data['providerSecret'];
     let accountId = data['accountId'];
-    if (accountId && accountId.length > 0) {
+    let email = data['providedEmail'];
+    if (accountId && accountId.length > 0 && email && email.length > 0) {
       $('#retarget-provider-ok').removeClass('disabled');
     }
     let message = web3.utils.sha3((new Date()).toISOString());
@@ -987,7 +1006,7 @@ function loadSVGs() {
     $('#subscriberSecretC2C').css('color','black');
     if (is3CP0()) return;
 
-    let email = data['emailOnPayment'];
+    let email = data['providedEmail'];
     if (/^\S+@\S+\.\S+$/g.test(email)) {
       $('#retarget-subscriber-ok').removeClass('disabled');
     }
@@ -1156,7 +1175,11 @@ function loadSVGs() {
     if (is3CP0()) return;
     $('#register-confirm-modal').modal('hide');
     let address = data['walletAddress'] || data['providerAddress'];
-    let state = btoa(JSON.stringify({ "goPath": "/reap#onboarded", "stopPath": "/reap", "address":address}));
+    let state = { "goPath": "/reap#onboarded", "stopPath": "/reap", "address":address};
+    if (!!data['providedEmail']) {
+      state['email'] = data['providedEmail'];
+    }
+    state = btoa(JSON.stringify(state));
     window.location = `/onboard?state=${state}`;
   }
 
@@ -1216,6 +1239,7 @@ function loadSVGs() {
       if (is3CP0()) return;
       $('#retarget-provider-ok').addClass('loading');
       let accountId = data['accountId'];
+      let email = data['providedEmail'];
       let address = data['walletAddress'] || data['providerAddress'];
       try {
         let secret = data['providerSecret'];
@@ -1231,7 +1255,8 @@ function loadSVGs() {
           accountId: accountId,
           address: address,
           signature: signature,
-          message: message
+          message: message,
+          email: email
         })
       })
       .then((result) => {
@@ -1251,7 +1276,7 @@ function loadSVGs() {
     (async () => {
       if (is3CP0()) return;
       $('#retarget-subscriber-ok').addClass('loading');
-      let email = data['emailOnPayment'];
+      let email = data['providedEmail'];
       let address = data['walletAddress'] || data['subscriberAddress'];
       try {
         let secret = data['subscriberSecret'];

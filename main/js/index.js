@@ -413,11 +413,13 @@ app.get('/v1/transact.js', throttle, (req, res) => {
  * 
  *   // admin configures onboard redirect URL (this) w/Stripe--this is different than the UX redirectUrl below
  *   ...
- *   ui -> ui : redirectUrl := ...
- *   ui -> stripe : onboard w/state=redirectUrl
- *   stripe -> this : w/code, state=redirectUrl
- *   this -> redirectUrl : w/cookie containing code
- *   redirectUrl -> /provider : next call below
+ *   ui.html calls /onboard w/ goPath := /reap#onboarded in state, state also has address/email, all from ui.html modal
+ *   website onboarding calls /onboard w/out state
+ *   /onboard -> sets goPath to this if not set, calls stripe w/state+redirectUrl to this
+ *   stripe -> this : w/code, state
+ *   this -> redirects to goPath from state : w/cookie containing code
+ *   goPath redirect -> /provider : next call below
+ *   /provider writes to database
  * 
  * Required parameters in query: 
  * 
@@ -425,7 +427,7 @@ app.get('/v1/transact.js', throttle, (req, res) => {
  *   - payGate auth code
  * 
  *   state:
- *   - {baseUrl:..,goPath:.., stopPath:.., address:..} base64 encoded JSON string
+ *   - {baseUrl:..,goPath:.., stopPath:.., address:.., email:...} base64 encoded JSON string
  *     - baseUrl is the base URL for paths, optional, if not provided, it's that of this server
  *     - goPath is the PATH part of ${PROTOCOL}://${BASE_URL}${PATH} to redirect to from this call if payGateId successfully retrieved
  *       - goPath is redirected-to with 'note' query param for any notification notes (base64 encoded)
@@ -434,8 +436,9 @@ app.get('/v1/transact.js', throttle, (req, res) => {
  *     - stopPath is the PATH part of ${PROTOCOL}://${BASE_URL}${PATH} to redirect to from this call if error or cancel
  *       - stopPath is redirected-to with 'error' query param with any error notes (base64 encoded)
  *     - address
+ *     - email is the provider email for re-targeting
  *   - for example:
- *     - state := btoa(JSON.stringify({"goPath":"/reap#onboarded","stopPath":"/reap","address":"..."}));
+ *     - state := btoa(JSON.stringify({"goPath":"/reap#onboarded","stopPath":"/reap","address":"...","email":"..."}));
  *
  * Redirects to one of ${PROTOCOL}://${BASE_URL}${goPath} or ${PROTOCOL}://${BASE_URL}${stopPath}.
  * 
@@ -473,6 +476,9 @@ app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp) => {
       let baseUrl = state.baseUrl ? state.baseUrl : `${PROTOCOL}://${BASE_URL}`;
       let redirectUrl = utils.addQueryParam(`${baseUrl}${state.goPath}`, 'note', utils.btoa('OK, success, provider added.'));
       redirectUrl = utils.addQueryParam(redirectUrl, "stopUrl", utils.btoa(`${baseUrl}${state.stopPath}`));
+      if (state.email) {
+        redirectUrl = utils.addQueryParam(redirectUrl, "email", state.email);
+      }
       if (state.address) {
         redirectUrl = utils.addQueryParam(redirectUrl, "address", state.address);
       }
@@ -505,13 +511,14 @@ app.get('/v1/onboardRedirectTargetFromPayGate', (req, rsp) => {
  *   - provider ledger address
  * 
  *   state:
- *   - {baseUrl, goPath:.., stopPath:..} base64 encoded JSON string
+ *   - {baseUrl, goPath:.., stopPath:.., email:...} base64 encoded JSON string
  *     - baseUrl is the base URL for paths, optional, if not provided, it's that of this server
  *     - goPath is the PATH part of ${PROTOCOL}://${BASE_URL}${PATH} to redirect to from this call if provider successfully set in ledger
  *       - goPath is redirected-to with 'note' query param for any notification notes
  *       - goPath is redirected-to with 'address' query param with address being registered on ledger
  *     - stopPath is the PATH part of ${PROTOCOL}://${BASE_URL}${PATH} to redirect to from this call if error or cancel
  *       - stopPath is redirected-to with 'error' query param with any error notes
+ *     - email is the provider email for re-targeting
  *   - for example: 
  *     - state := btoa(JSON.stringify({"goPath":"/reap","stopPath":"/reap"}));
  *     - state := "eyJnb1BhdGgiOiIvcmVhcCIsInN0b3BQYXRoIjoiL3JlYXAifQ=="
@@ -549,8 +556,10 @@ app.get('/v1/provider', (req, rsp) => {
       } catch (err) {
         throw `You must first onboard with Stripe before attempting to register.`;
       }
+      const email = state['email'];
+      const emailHash = email ? crypto.hash(email.toLowerCase(), SALT) : null;
       if (!await database.getError()) {
-        await database.addProvider(paymentGatewayId, address);
+        await database.addProvider(paymentGatewayId, address, emailHash);
       }
       debug('GET /v1/provider OK');
       let baseUrl = state.baseUrl ? state.baseUrl : `${PROTOCOL}://${BASE_URL}`;
@@ -646,26 +655,39 @@ app.post('/v1/retarget-provider', (req, rsp) => {
       let address = body['address'];
       let signature = body['signature'];
       let message = body['message'];
+      let email = body['email'];
       if (!accountId || typeof accountId !== 'string') throw `invalid accountId (${accountId})`;
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       address = address.toLowerCase();
       if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;
-      if (!await database.getError()) {
-        let existingAccountId = await database.getAccountId(address);
-        if (existingAccountId && existingAccountId.toLowerCase() !== accountId.toLowerCase()) {
-          throw `Address ${address} is already tied to a different account, cannot use it as a re-targeting target.`;
-        }
-        let checksOut = await database.isAccountIdInTxs(accountId);
-        if (!checksOut) {
-          throw `No transactions for Stripe account ID: ${accountId}`;
-        }
-        let email = await paymentGateway.getEmailForAccount(accountId);
-        if (!email) {
-          throw `No email available from Stripe for account ID: ${accountId}`;
-        }
-        let emailHash = crypto.hash(email, SALT);
-        await retarget.retargetProvider(email, emailHash, address, accountId);
+
+      let pgEmail = await paymentGateway.getEmailForAccount(accountId);
+
+      if (await database.getError()) {
+        throw `DB error`;
       }
+
+      let existingAccountId = await database.getAccountId(address);
+      if (existingAccountId && existingAccountId.toLowerCase() !== accountId.toLowerCase()) {
+        throw `Address ${address} is already tied to a different account, cannot use it as a re-targeting target.`;
+      }
+      
+      email = pgEmail ? pgEmail : email; // payment gateway email, if any, overrides provided  
+
+      if (!email) throw `No email provided.`
+
+      const emailHash = crypto.hash(email.toLowerCase(), SALT);
+      if (pgEmail) {
+        var checksOut = await database.isAccountIdInTxs(accountId);
+      } else {
+        var checksOut = await database.isAccountIdInTxs(accountId, emailHash);
+      }
+      
+      if (!checksOut) {
+        throw `No transactions for Stripe account ID: ${accountId} and the provided email.`;
+      }
+
+      await retarget.retargetProvider(email, emailHash, address, accountId);
       debug('POST /v1/retarget-provider OK');
       rsp.status(200).send();
     }
@@ -700,7 +722,7 @@ app.post('/v1/retarget-subscriber', (req, rsp) => {
       address = address.toLowerCase();
       if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;
       if (!await database.getError()) {
-        let emailHash = crypto.hash(email, SALT);
+        let emailHash = crypto.hash(email.toLowerCase(), SALT);
         let checksOut = await database.isEmailInTxs(emailHash);
         if (!checksOut) {
           throw `No transactions for email: ${email}`;
@@ -809,7 +831,7 @@ app.post('/v1/go-retarget', throttle, (req, rsp) => {
       if (!id || typeof id !== 'string') throw `invalid id (${id})`;
       address = address.toLowerCase();
       if (!(await loopbackChallengeChecker.checkSignature(address, signature, message))) throw `invalid signature`;      
-      const emailHash = crypto.hash(email, SALT);
+      const emailHash = crypto.hash(email.toLowerCase(), SALT);
       id = id.toLowerCase();
       await retarget.retargetFinalized(id);
       let amountCents = OUR_RETARGET_FEE_CENTS;
@@ -821,7 +843,7 @@ app.post('/v1/go-retarget', throttle, (req, rsp) => {
             throw `Address ${address} is already tied to a different account, cannot use it as a re-targeting target.`;
           }
           if (!existingAccountId) {
-            await database.addProvider(accountId, address);
+            await database.addProvider(accountId, address, emailHash);
           }
           await database.retargetByAccountId(accountId, transferId, address);
         } else {

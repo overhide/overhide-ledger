@@ -12,8 +12,9 @@ const POSTGRES_SSL = process.env.POSTGRES_SSL || process.env.npm_config_POSTGRES
 const SELECT_MAX_ROWS = process.env.SELECT_MAX_ROWS || process.env.npm_config_SELECT_MAX_ROWS || process.env.npm_package_config_SELECT_MAX_ROWS;
 const KEYV_URI = process.env.KEYV_URI || process.env.npm_config_KEYV_URI || process.env.npm_package_config_KEYV_URI;
 const KEYV_RETARGET_NAMESPACE = process.env.KEYV_RETARGET_NAMESPACE || process.env.npm_config_KEYV_RETARGET_NAMESPACE || process.env.npm_package_config_KEYV_RETARGET_NAMESPACE;
+const SALT = process.env.SALT || process.env.npm_config_SALT || process.env.npm_package_config_SALT;
 
-const { log, reliable, waitForXPath, waitForSelector, waitForVisible, waitForClick, getChildFrameByNameOrId } = require('./utils.js');
+const { log, delay, reliable, waitForXPath, waitForSelector, waitForVisible, waitForClick, getChildFrameByNameOrId } = require('./utils.js');
 
 const database = require('../../main/js/lib/database.js').init({
   pghost: POSTGRES_HOST,
@@ -24,6 +25,7 @@ const database = require('../../main/js/lib/database.js').init({
   pgssl: POSTGRES_SSL,
   select_max_rows: SELECT_MAX_ROWS
 });
+const crypto = require('../../main/js/lib/crypto.js').init();
 const keyv = new Keyv({
   uri: typeof KEYV_URI === 'string' && KEYV_URI,
   store: typeof KEYV_URI !== 'string' && KEYV_URI,
@@ -33,6 +35,8 @@ const keyv = new Keyv({
 const KEYV_KEY_FOR_LATEST_ID = 'LATEST_ID';
 
 const TEST_PROVIDER_ADDRESS = '0x046c88317b23dc57F6945Bf4140140f73c8FC80F';
+const TEST_PROVIDER_EMAIL = 'jakub.at.work@gmail.com';
+const TEST_PROVIDER_EMAIL_HASH = crypto.hash(TEST_PROVIDER_EMAIL, SALT);
 const TEST_SOME_ADDRESS = '0xd6106c445a07a6a1caf02fc8050f1fde30d7ce8b';
 const TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL = 'acct_1DymWuHnm2jVFR4M';  // account for 'jakub.at.work@gmail.com';
 
@@ -44,7 +48,7 @@ const TEST_CVC = '111';
 async function ensureProvider() {
   log('--------------------------- ADD PROVIDER W/SUB --------------------------------------');
   log('provider address: ' + TEST_PROVIDER_ADDRESS + ' <=> ' + TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL);
-  try { await database.addProvider(TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL, TEST_PROVIDER_ADDRESS); } catch (e) { log(e); }
+  try { await database.addProvider(TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL, TEST_PROVIDER_ADDRESS, TEST_PROVIDER_EMAIL_HASH); } catch (e) { log(e); }
   log('add tx: ' + TEST_SOME_ADDRESS + ' => ' + TEST_PROVIDER_ADDRESS);
   try { await database.addTransaction(TEST_SOME_ADDRESS, TEST_PROVIDER_ADDRESS, 300, 'foo', '00', false); } catch (e) { log(e); }
   log('-------------------------------------------------------------------------------------');
@@ -74,6 +78,7 @@ async function generateProvider(page) {
   });
   await page.click('#register-payee');
   assert (await reliable(page, 250, 3, async (page) => {
+    await page.type('input[bind="providedEmail"]', TEST_PROVIDER_EMAIL, { delay: 10 });
     await waitForClick(page, '#register-confirm-modal .ui.primary.button', 250, 32);
     try {
       await page.waitForSelector('#onboarding-continue', { timeout: 6000 });
@@ -85,6 +90,7 @@ async function generateProvider(page) {
   assert (await reliable(page, 250, 3, async (page) => {
     await waitForClick(page, '#onboarding-continue', 250, 32);
     try {
+      await delay(2000);
       const [button] = await page.$x("//span[contains(., 'Skip this form')]");
       if (button) {
           await button.click();
@@ -175,6 +181,7 @@ async function makePayment(page, provider_address, amount) {
   });  
   assert(!!visa_frame, 'never saw visa frame');
   await visa_frame.waitFor('input[placeholder="Email"]',{timeout: 10000});
+  await delay(2000);
   await visa_frame.type('input[placeholder="Email"]', TEST_EMAIL);
   await visa_frame.type('input[placeholder="Card number"]', TEST_CARD);
   await visa_frame.type('input[placeholder="MM / YY"]', TEST_EXPIRY);
@@ -244,7 +251,9 @@ async function retargetProvider(page) {
 
   assert (await reliable(page, 250, 3, async (page) => {
     await page.evaluate(`document.querySelector('input[placeholder="acct_1D0000000000VA"]').value = ''`);
+    await delay(2000);
     await page.type('input[placeholder="acct_1D0000000000VA"]', TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL, { delay: 10 });
+    await page.type('input[placeholder="fred@acme.com"]', TEST_PROVIDER_EMAIL, { delay: 10 });
     return await page.evaluate(`document.querySelector('input[placeholder="acct_1D0000000000VA"]').value`);
   }, async (result) => {
     return result === TEST_PROVIDER_ACCOUNT_ID_WITH_EMAIL;

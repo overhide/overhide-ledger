@@ -35,7 +35,8 @@ db.connect();
   if (result.rowCount == 0) {
     await db.query(`CREATE TABLE providers (id SERIAL PRIMARY KEY,
                                             paymentgatewayid varchar(100) NOT NULL,
-                                            address bytea NOT NULL)`);
+                                            address bytea NOT NULL,
+                                            emailhash bytea)`);
     console.log(`created 'providers' table.`);
   }
   await db.query('CREATE INDEX IF NOT EXISTS address_index ON providers (address);');

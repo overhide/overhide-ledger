@@ -86,8 +86,9 @@ class Database {
    * 
    * @param {string} paymentGatewayId
    * @param {string} providerAddress
+   * @param {string} emailHash
    */
-  async addProvider(paymentGatewayId, providerAddress) {
+  async addProvider(paymentGatewayId, providerAddress, emailHash) {
     this[checkInit]();
     try {
       let query = `SELECT paymentgatewayid FROM providers WHERE address = decode($1,'hex')`;
@@ -97,8 +98,13 @@ class Database {
       if (result.rowCount > 0) {
         throw `this public address is already registered with the ledger: ${providerAddress}`;
       }
-      query = `INSERT INTO providers (paymentgatewayid, address) VALUES ($1,decode($2,'hex'))`;
-      params = [paymentGatewayId,providerAddress.slice(2)];
+      if (emailHash) {
+        query = `INSERT INTO providers (paymentgatewayid, address, emailhash) VALUES ($1,decode($2,'hex'),decode($3,'hex'))`;
+        params = [paymentGatewayId,providerAddress.slice(2),emailHash];
+      } else {
+        query = `INSERT INTO providers (paymentgatewayid, address) VALUES ($1,decode($2,'hex'))`;
+        params = [paymentGatewayId,providerAddress.slice(2)];
+      }
       debug('%s,%o', query, params);
       await this[ctx].db.query(query,params);
       this[logEvent](query, params);
@@ -176,13 +182,19 @@ class Database {
    * Does accountId exist and does it have transactions?
    * 
    * @param {string} accountId
-   * @returns {boolean} 'true' if email hash exists in transactions
+   * @param {string} emailHash -- optional if should check emailhash on provider
+   * @returns {boolean} 'true' if provider exists in transactions
    */
-  async isAccountIdInTxs(accountId) {
+  async isAccountIdInTxs(accountId, emailHash) {
     this[checkInit]();
     try {
-      let query = `SELECT EXISTS(SELECT 1 FROM transactions WHERE toaddress in (SELECT address FROM providers WHERE paymentgatewayid = $1))`;
-      let params = [accountId];
+      if (emailHash) {
+        var query = `SELECT EXISTS(SELECT 1 FROM transactions WHERE toaddress in (SELECT address FROM providers WHERE paymentgatewayid = $1 AND emailhash = decode($2,'hex')))`;
+        var params = [accountId, emailHash];  
+      } else {
+        var query = `SELECT EXISTS(SELECT 1 FROM transactions WHERE toaddress in (SELECT address FROM providers WHERE paymentgatewayid = $1))`;
+        var params = [accountId];  
+      }
       debug('%s,%o', query, params);
       let result = await this[ctx].db.query(query,params);
       if (result.rowCount == 0) {

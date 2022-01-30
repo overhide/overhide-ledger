@@ -194,8 +194,15 @@ async function getChildFrameByNameOrId(page, tag) {
   }  
 }
 
+function delay(time) {
+  return new Promise(function(resolve) { 
+      setTimeout(resolve, time)
+  });
+}
+
 module.exports = {
   log: log,
+  delay: delay,
   disableLog: disableLog,
   reliable: reliable,
   waitForXPath: waitForXPath,

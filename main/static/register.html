@@ -105,6 +105,8 @@
 
             <p class="balance-text">payments will go into the Stripe account just onboarded</p>
           </div>
+          <pre class="balance-text" style="margin-top:1.7em; margin-bottom:2em;">o   o   o</pre>
+          <p class="balance-text">the email address is not stored, just hashed &mdash; needed for re-targetting</p>          
         </div>
         <div class="eight wide column full-height">
           <div class="ui vertical section middle aligned stackable grid container">
@@ -145,6 +147,12 @@
                 <p id="confirmall" class="balance-text" style="color:#ff8080;">check off all of the above to proceed</p>
               </div>
             </div>
+            <div class="row centered email">
+              <div class="ui input large" style="width: 95%">
+                <input id="email" type="text" placeholder="fred@acme.com">
+              </div>
+              <p id="emaillabel" class="balance-text" style="color:#ff8080;">email address for re-targeting</p>
+            </div> 
           </div>
         </div>
       </div>
@@ -207,6 +215,7 @@
     handleUrl();
     $('#validation').fadeTo(0,0);
     validateSecret();
+    $('.email').hide();
     if (oh$.getImparterTags().find(rec => rec === 'ohledger-web3')) {
       setAddressFromWallet();
     } else {
@@ -260,6 +269,10 @@
     validateSecret();
   })
 
+  $("#email").on('change keyup input', function (e) {
+    validateEmail();
+  })
+
   function validateSecret() {
     let value = $("#secret").val();
     $("#address").val('');
@@ -271,6 +284,17 @@
       oh$.setCredentials('ohledger',{secret:value});
     }
   }
+
+  function validateEmail() {
+    let value = $("#email").val();
+    $("#register").prop('disabled', true);
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+      $("#register").prop('disabled', false);
+      $("#emaillabel").fadeTo(500,0);
+    } else {
+      $("#emaillabel").fadeTo(500,1);
+    }
+  }
   
   function checkConfirms() {
     $("#register").prop('disabled', true);
@@ -278,14 +302,16 @@
     if ($('#confirmsave').checkbox('is checked')
         && $('#confirmprivate').checkbox('is checked')
         && $('#confirmread').checkbox('is checked')) {
-      $("#register").prop('disabled', false);
       $("#confirmall").fadeTo(500,0);
+      $('.email').show();
+      validateEmail();
     }
   }
 
   function register() {
     let address = $("#address").val();
-    let state = btoa(JSON.stringify({ "goPath": "/onboarded.html", "stopPath": "/onboarderror.html", "address": address }));
+    let email = $("#email").val();
+    let state = btoa(JSON.stringify({ "goPath": "/onboarded.html", "stopPath": "/onboarderror.html", "address": address, "email": email }));
     window.location = `/v1/provider?address=${address}&state=${state}`;
   }
 
@@ -308,8 +334,10 @@
   function setAddressFromWallet() {
     $(".no-wallet").hide();
     $(".has-wallet").show();
-    $("#register").prop('disabled',false);
+    $("#register").prop('disabled',true);
     $('.confirmations').hide();
+    $('.email').show();
+    validateEmail();
     $("#address").val(oh$.getCredentials('ohledger-web3').address);
   }
 
@@ -323,6 +351,7 @@
       $("#validation").fadeTo(500,0);
       $("#register").prop('disabled', true);
       $('.confirmations').show();
+      $('.email').hide();
       $('.ui.checkbox').checkbox('uncheck');
     }
     return;
@@ -333,8 +362,8 @@
       $(".no-wallet").show();
       $(".has-wallet").hide();
       $("#address").val('');
-      $("#register").prop('disabled', true);
       $('.confirmations').hide();
+      $('.email').hide();
       validateSecret();
     }
   });
