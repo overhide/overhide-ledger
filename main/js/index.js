@@ -1003,7 +1003,7 @@ app.post('/v1/go-void', throttle, (req, rsp) => {
  *        returned by the last batch(es):  everything is in descending transaction time order.
  * 
  *        Results out of this remuneration provider always exclude voided transactions (e.g. transactions you void when you 
- *        issue refunds through [Stripe][https://stripe.com]).  All transactions voided through the "Void Txs" button in the 
+ *        issue refunds through [Stripe](https://stripe.com)).  All transactions voided through the "Void Txs" button in the 
  *        [legacy app](https://ledger.overhide.io/reap) are excluded.  This would be similar to setting truthy the 
  *        <em>include-refunds</em> query parameter in other remuneration providers &mdash; which work somewhat differently as they are
  *        blockchain based and cannot be voided.
@@ -1099,7 +1099,7 @@ app.post('/v1/go-void', throttle, (req, rsp) => {
  *        Retrieve the latest remuneration transactions (and/or their tally) from *from-address* to *to-address*.
  * 
  *        Results out of this remuneration provider always exclude voided transactions (e.g. transactions you void when you 
- *        issue refunds through [Stripe][https://stripe.com]).  All transactions voided through the "Void Txs" button in the 
+ *        issue refunds through [Stripe](https://stripe.com)).  All transactions voided through the "Void Txs" button in the 
  *        [legacy app](https://ledger.overhide.io/reap) are excluded.  This would be similar to setting truthy the 
  *        <em>include-refunds</em> query parameter in other remuneration providers &mdash; which work somewhat differently as they are
  *        blockchain based and cannot be voided.
