@@ -340,17 +340,17 @@ class Database {
    async getAllTransactionsForAddress(address, skip = 0) {
     this[checkInit]();
     try {
-      let query = `SELECT fromaddress, toaddress, amountusdcents, transactionts, transferid, void, private FROM transactions WHERE fromAddress = decode($1,'hex') OR toaddress = decode($1,'hex') AND void = false ${query_since} ${query_private} ORDER BY transactionts ASC OFFSET ${skip} `;
+      let query = `SELECT fromaddress, toaddress, amountusdcents, transactionts, transferid, void, private FROM transactions WHERE fromAddress = decode($1,'hex') OR toaddress = decode($1,'hex') AND void = false ORDER BY transactionts ASC OFFSET ${skip} `;
       let params = [address.slice(2)];
       debug('%s,%o', query, params);
-      result = await this[ctx].db.query(query, params);
+      let result = await this[ctx].db.query(query, params);
       if (result.rowCount == 0) {
         return { transactions: [] };
       }
       result = result.rows.map(row => {
         return {
-          "from-address": row.fromaddress,
-          "to-address": row.toaddress,
+          "from-address": row.fromaddress ? `0x${row.fromaddress.toString('hex')}` : null,
+          "to-address": row.toaddress ? `0x${row.toaddress.toString('hex')}` : null,
           "transaction-value": row.amountusdcents,
           "transaction-date": row.transactionts,
           "transfer-id": row.transferid,

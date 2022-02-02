@@ -1067,21 +1067,22 @@ app.post('/v1/go-void', throttle, (req, rsp) => {
   (async () => {
     try {
       debug('GET /v1/export <= %o, %o', req.params, req.query);
-      let address = req.params['address'];
+      let address = req.params['toAddress'];
       let skip = req.query['skip'];
       address = address.toLowerCase();
-      skip = parseInt(skip);
+      skip = skip ? parseInt(skip) : 0;
 
-      if (!authTokenChallengeChecker.isValidTokenAuthZ(req, address)) {
+      const signature = req.query['signature'] || '';
+      const authHeader = utils.btoa((req.headers['authorization'] || ''));
+      if (!authTokenChallengeChecker.checkSignature(address, signature, authHeader)) {
         debug(`GET /v1/export DENIED :: signature doesn't match authZ header and address`);
         rsp.status(401).send();
         return;
       }
 
-      let result = await database.getTransgetAllTransactionsForAddressactions(address, skip);
+      let result = await database.getAllTransactionsForAddress(address, skip);
       debug('GET /v1/export OK');
       rsp.json(result);
-      rsp.locals.result = result;
     }
     catch (err) {
       debug('GET /v1/export ERROR :: %s', String(err));

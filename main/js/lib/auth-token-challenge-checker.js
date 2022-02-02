@@ -64,7 +64,7 @@ class AuthTokenChallengeChecker {
    * @returns {boolean} -- truthy if signature valid for the value of the request's authorization header and
    *                       passed in `fromAddress` query parameter.
    */
-   async isValidTokenAuthZ(req, address) {
+   isValidTokenAuthZ(req, address) {
     this[checkInit]();
 
     const signature = req.params['signature'];
@@ -80,7 +80,7 @@ class AuthTokenChallengeChecker {
    * @param {string} message - the challenge message: bearer token value
    * @returns {boolean} response or calls next() to continue chain
    */
-  async checkSignature(address, signature, message) {
+  checkSignature(address, signature, message) {
 
     if (!signature) {
       this[metrics].noSignature++;
