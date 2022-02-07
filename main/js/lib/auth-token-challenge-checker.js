@@ -67,10 +67,10 @@ class AuthTokenChallengeChecker {
    isValidTokenAuthZ(req, address) {
     this[checkInit]();
 
-    const signature = req.params['signature'];
-    const message = req.header['Authorization'];
+    const signature = req.query['signature'];
+    const message = req.headers['authorization'];
 
-    return this.checkSignature(address, signature, message.toString('base64'));
+    return this.checkSignature(address, signature, utils.btoa(message));
    }
 
   /**

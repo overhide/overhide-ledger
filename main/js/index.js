@@ -1280,7 +1280,7 @@ app.get('/v1/get-transactions/:fromAddress/:toAddress', token, cacheCheck, throt
         since: since,
         asOf: asOf,
         tallyOnly: tallyOnly,
-        includePrivate: authTokenChallengeChecker.isValidTokenAuthZ(req, req.params['from-address'])
+        includePrivate: authTokenChallengeChecker.isValidTokenAuthZ(req, fromAddress)
       });
       if (tallyDollars) {
         result = { ...result, tally: (result.tally / 100).toFixed(2) };
