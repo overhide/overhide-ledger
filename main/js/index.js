@@ -303,6 +303,7 @@ app.post('/v1/gratis', (req, res) => {
       debug('POST /v1/gratis <= %o', body);
       let address = body['address'];
       let recaptchaResult = body['recaptchaResult'];
+      let isPrivate = !!body['isPrivate'];
       if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
       if (!recaptchaResult || typeof recaptchaResult !== 'string') throw `invalid recaptchaResult, must be a string`;
       address = address.toLowerCase();
@@ -310,7 +311,7 @@ app.post('/v1/gratis', (req, res) => {
       await recaptcha.verify(ip, recaptchaResult);
       if (!await database.getError()) {
         if (await database.getNumTransactionsFromTo(address, address) == 0) {
-          await database.addTransaction(address, address, 0, 0);
+          await database.addTransaction(address, address, 0, 0, null, isPrivate);
         }
       }
       debug('POST /v1/gratis OK');
@@ -1386,7 +1387,7 @@ app.post('/v1/is-signature-valid',
           throw `invalid signature`;
         }
         if (!skipLedger && !await database.getError()) {
-          if ((await database.getNumTransactionsByAddress(address)) == 0) {
+          if ((await database.getNumTransactionsByAddress(address, true)) == 0) {
             debug('POST /v1/is-signature-valid ERROR :: no transactions for address');
             rsp.status(400).send('no transactions for address');
             return;

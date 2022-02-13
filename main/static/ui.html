@@ -1112,7 +1112,7 @@ function loadSVGs() {
       let address = data['walletAddress'] || data['subscriberAddress'];
       let secret = data['subscriberSecret'];
       let [message, signature] = await signChallenge(address, secret);
-      $('#gratis-content').attr('src', `/v1/gratis.html?address=${address}&signature=${signature}&message=${message}`);
+      $('#gratis-content').attr('src', `/v1/gratis.html?address=${address}&signature=${atob(signature)}&b64message=${btoa(message)}`);
       $('#gratis-modal').modal('show');
     })();
   }
