@@ -276,7 +276,7 @@ app.get('/v1/gratis.html', throttle, (req, res) => {
     debug('GET /v1/gratis.html <= %o', query);
     let address = query['address'];
     let signature = query['signature'];
-    let message = query['message'];
+    let message = 'message' in query ? query['message'] : utils.atob(query['b64message']);
     if (!address || typeof address !== 'string' || address.length != 42) throw `invalid address, must be hex encoded 42 character string starting with '0x' (${address})`;
     if (!signature || typeof signature !== 'string') throw `invalid signature, must be a string (${signature})`;
     if (!message || typeof message !== 'string') throw `invalid message, must be a string (${message})`;
