@@ -68,9 +68,14 @@ class AuthTokenChallengeChecker {
     this[checkInit]();
 
     const signature = req.query['signature'];
-    const message = req.headers['authorization'];
+    const header = req.headers['authorization'];
+    const matcher = header.match(/Bearer (.+)/);
 
-    return this.checkSignature(address, signature, utils.btoa(message));
+    if (!matcher) {
+      throw `expected Bearer token`;
+    }
+
+    return this.checkSignature(address, signature, utils.btoa(matcher[1]));
    }
 
   /**
