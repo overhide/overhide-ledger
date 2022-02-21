@@ -1,3 +1,8 @@
+<p align="center"><a href="https://overhide.io"><img src="./.github/logo.png" width="200px"/></a></p>
+
+<p align="center"><a href="https://overhide.io">overhide.io</a></p><p style="width: 500px; margin: auto">A free and fully open-sourced ecosystem of widgets, a front-end library, and back-end services &mdash; to make addition of "logins" and "in-app-purchases" (IAP) to your app as banal as possible.</p>
+
+<hr/>
 # overhide-ledger
 
 Orchestrate payments between payers and payees known only to this service--not to eachother--but exposing said payments in this centralized public ledger as payments between verifiable pseudonymous parties.
